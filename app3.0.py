@@ -372,6 +372,7 @@ def ma_crossover(df, fast=20, slow=50):
     return df
     
 def vwap_strategy(df):
+    # Ensure VWAP exists before using it
     if 'VWAP' not in df.columns:
         df['VWAP'] = ta.volume.volume_weighted_average_price(df['High'], df['Low'], df['Close'], df['Volume'])
     volume_filter = df['Volume'] > df['Volume'].rolling(20).mean() * 1.2
