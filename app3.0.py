@@ -227,6 +227,7 @@ FULL_SYMBOLS_MAP = {
     "XTZ-USD": {"name": "Tezos", "keywords": ["Tezos", "XTZ", "公鏈"]},
     "ZEC-USD": {"name": "大零幣 (ZCash)", "keywords": ["大零幣", "ZCash", "ZEC", "隱私幣"]},
 }
+
 CATEGORY_HOT_OPTIONS = {}
     for category, codes in CATEGORY_MAP.items():
         options = {}
@@ -695,5 +696,6 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
+
 
 
