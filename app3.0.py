@@ -1,11 +1,10 @@
-# app_ultimate_version.py
-
 import re
 import warnings
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import ta
 import yfinance as yf
 from plotly.subplots import make_subplots
 
@@ -16,20 +15,20 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析📈",
-    page_icon="🚀",
+    page_title="AI趨勢分析📈 (Expert)",
+    page_icon="🤖",
     layout="wide"
 )
 
 # 週期映射
-PERIOD_MAP = {
-    "30 分": ("60d", "30m"),
-    "4 小時": ("1y", "60m"),
-    "1 日": ("5y", "1d"),
+PERIOD_MAP = { 
+    "30 分": ("60d", "30m"), 
+    "4 小時": ("1y", "60m"), 
+    "1 日": ("5y", "1d"), 
     "1 週": ("max", "1wk")
 }
 
-# 🚀 您的【所有資產清單】(與您提供的一致，此處省略以節省空間)
+# 🚀 您的【所有資產清單】
 FULL_SYMBOLS_MAP = {
     # 美股/ETF/指數
     "ACN": {"name": "Accenture (埃森哲)", "keywords": ["Accenture", "ACN", "諮詢", "科技服務"]},
@@ -226,6 +225,12 @@ FULL_SYMBOLS_MAP = {
     "XRP-USD": {"name": "瑞波幣 (Ripple)", "keywords": ["瑞波幣", "XRP", "XRP-USDT"]},
     "XTZ-USD": {"name": "Tezos", "keywords": ["Tezos", "XTZ", "公鏈"]},
     "ZEC-USD": {"name": "大零幣 (ZCash)", "keywords": ["大零幣", "ZCash", "ZEC", "隱私幣"]},
+}
+
+CATEGORY_MAP = {
+    "美股 (US) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
+    "台股 (TW) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith(".TW") or c.startswith("^TWII")],
+    "加密貨幣 (Crypto)": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith("-USD")],
 }
 
 CATEGORY_HOT_OPTIONS = {}
@@ -696,7 +701,3 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
-
-
-
-
