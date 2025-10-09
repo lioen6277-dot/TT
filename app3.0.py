@@ -906,13 +906,26 @@ def main():
         list(CATEGORY_HOT_OPTIONS.keys())
     )
 
-    # 2. 熱門標的選擇
-    hot_options = CATEGORY_HOT_OPTIONS.get(category_selection, {})
-    option_list = list(hot_options.keys())
-    selected_option = st.sidebar.selectbox(
-        "或從熱門清單選擇:",
-        [""] + option_list
-    )
+# 2. 熱門標的選擇
+hot_options = CATEGORY_HOT_OPTIONS.get(category_selection, {})
+option_list = list(hot_options.keys())
+
+# 嘗試找到「台積電」在 option_list 的 index（或包含 '2330'）
+found_idx = None
+for i, key in enumerate(option_list):
+    key_lower = str(key)
+    if '台積電' in key_lower or '2330' in key_lower:
+        found_idx = i
+        break
+
+# selectbox 的 list 包含一個空選項在最前面，所以 index 需要 +1
+default_index = (found_idx + 1) if found_idx is not None else 0
+
+selected_option = st.sidebar.selectbox(
+    "或從熱門清單選擇:",
+    [""] + option_list,
+    index=default_index
+)
 
     # 3. 自行輸入
     default_symbol = hot_options[selected_option] if selected_option else st.session_state.get('last_input', "")
@@ -1225,5 +1238,6 @@ if __name__ == '__main__':
     st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
     st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
     st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
 
 
