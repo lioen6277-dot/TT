@@ -585,24 +585,26 @@ def create_comprehensive_chart(df, symbol, period_key):
 def main():
     if 'run_analysis' not in st.session_state: st.session_state['run_analysis'] = False
 
-    st.sidebar.markdown("<span style='color: #FA8072; font-weight: bold;'>🚀 AI 趨勢分析</span>", unsafe_allow_html=True)
+    st.sidebar.title("🚀 AI 趨勢分析")
     st.sidebar.markdown("---")
-
+    
     selected_category = st.sidebar.selectbox('1. 選擇資產類別', list(CATEGORY_HOT_OPTIONS.keys()), index=1, key='category_selector')
     hot_options_map = CATEGORY_HOT_OPTIONS.get(selected_category, {})
-
+    
+    # 設置預設選項
     default_symbol_key = '2330.TW - 台積電'
     if default_symbol_key not in hot_options_map:
         default_symbol_key = list(hot_options_map.keys())[0] if hot_options_map else None
+    
     default_index = list(hot_options_map.keys()).index(default_symbol_key) if default_symbol_key else 0
-
+    
     st.sidebar.selectbox('2. 選擇熱門標的', list(hot_options_map.keys()), index=default_index, key='hot_target_selector', on_change=sync_text_input_from_selection)
     st.sidebar.text_input('...或手動輸入代碼/名稱:', st.session_state.get('sidebar_search_input', '2330.TW'), key='sidebar_search_input')
-
+    
     st.sidebar.markdown("---")
     selected_period_key = st.sidebar.selectbox('3. 選擇分析週期', list(PERIOD_MAP.keys()), index=2)
     st.sidebar.markdown("---")
-
+    
     if st.sidebar.button('📊 執行AI分析', use_container_width=True):
         st.session_state['run_analysis'] = True
         st.session_state['symbol_to_analyze'] = get_symbol_from_query(st.session_state.sidebar_search_input)
@@ -612,40 +614,64 @@ def main():
         final_symbol = st.session_state['symbol_to_analyze']
         period_key = st.session_state['period_key']
         period, interval = PERIOD_MAP[period_key]
+
         with st.spinner(f"🔍 正在啟動AI模型，分析 **{final_symbol}**..."):
             df_raw = get_stock_data(final_symbol, period, interval)
-            if df_raw.empty or len(df_raw) < 60:
+            
+            if df_raw.empty or len(df_raw) < 60: # 增加 lookback 期間要求
                 st.error(f"❌ **數據不足或代碼無效：** {final_symbol}。AI模型至少需要60個數據點才能進行精準分析。")
             else:
                 info = get_company_info(final_symbol)
                 fa_rating = calculate_advanced_fundamental_rating(final_symbol)
                 chips_data = get_chips_and_news_analysis(final_symbol)
+                
                 df_tech = calculate_all_indicators(df_raw.copy())
                 analysis = generate_ai_fusion_signal(df_tech, fa_rating, chips_data)
+                
                 price = df_raw['Close'].iloc[-1]
-                consensus_sl, consensus_tp, all_strategy_results = get_consensus_levels(df_tech, price)
+                prev_close = df_raw['Close'].iloc[-2] if len(df_raw) > 1 else price
+
+                # 修正：確保數值型態，避免 ValueError
+                try:
+                    price_val = float(price)
+                except Exception:
+                    price_val = np.nan
+                try:
+                    prev_close_val = float(prev_close)
+                except Exception:
+                    prev_close_val = np.nan
+                if pd.notna(price_val) and pd.notna(prev_close_val):
+                    change_val = price_val - prev_close_val
+                    pct_val = (price_val - prev_close_val) / prev_close_val * 100 if prev_close_val != 0 else 0.0
+                else:
+                    change_val = np.nan
+                    pct_val = np.nan
+
+                currency_symbol = get_currency_symbol(final_symbol)
+                pf = ".4f" if pd.notna(price_val) and price_val < 100 and currency_symbol != 'NT$' else ".2f"
+
+                consensus_sl, consensus_tp, all_strategy_results = get_consensus_levels(df_tech, price_val if pd.notna(price_val) else 0)
 
                 st.header(f"📈 {info['name']} ({final_symbol}) AI趨勢分析報告")
-
                 st.markdown(f"**分析週期:** {period_key} | **FA評級:** **{fa_rating.get('score',0):.1f}/7.0** ({fa_rating.get('summary','N/A')})")
                 st.markdown("---")
-
+                
                 st.subheader("💡 核心行動與量化評分")
-                prev_close = df_raw['Close'].iloc[-2] if len(df_raw) > 1 else price
-                change, pct = price - prev_close, (price - prev_close) / prev_close * 100 if prev_close != 0 else 0
-                currency_symbol = get_currency_symbol(final_symbol)
-                pf = ".4f" if price < 100 and currency_symbol != 'NT$' else ".2f"
-
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("💰 當前價格", f"{currency_symbol}{price:{pf}}", f"{change:+.{pf}} ({pct:+.2f}%)")
+                # 修正：避免 ValueError
+                c1.metric(
+                    "💰 當前價格",
+                    f"{currency_symbol}{price_val:{pf}}" if pd.notna(price_val) else "N/A",
+                    f"{change_val:+{pf}} ({pct_val:+.2f}%)" if pd.notna(change_val) and pd.notna(pct_val) else "N/A"
+                )
                 c2.metric("🎯 AI 行動建議", analysis['action'])
                 c3.metric("🔥 AI 總量化評分", f"{analysis['score']:.2f}")
                 c4.metric("🛡️ AI 信心指數", f"{analysis['confidence']:.0f}%")
-
+                
                 st.markdown("---")
                 st.subheader("🛡️ AI 綜合策略與風險控制")
                 s1, s2, s3 = st.columns(3)
-                s1.metric("建議進場價 (參考):", f"{currency_symbol}{price:{pf}}")
+                s1.metric("建議進場價 (參考):", f"{currency_symbol}{price_val:{pf}}" if pd.notna(price_val) else "N/A")
                 s2.metric("🚀 共識止盈價 (TP):", f"{currency_symbol}{consensus_tp:{pf}}" if pd.notna(consensus_tp) else "N/A", help="綜合多種策略計算得出的共識目標價")
                 s3.metric("🛑 共識止損價 (SL):", f"{currency_symbol}{consensus_sl:{pf}}" if pd.notna(consensus_sl) else "N/A", help="綜合多種策略計算得出的共識風險控制價")
 
