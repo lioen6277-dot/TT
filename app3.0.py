@@ -17,8 +17,8 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析", 
-    page_icon="📈", 
+    page_title="AI趨勢分析📈", 
+    page_icon="🚀", 
     layout="wide"
 )
 
@@ -625,7 +625,6 @@ def get_technical_data_df(df):
     technical_df = pd.DataFrame(data, columns=['指標名稱', '最新值', '分析結論', '顏色'])
     technical_df = technical_df.set_index('指標名稱')
     return technical_df
-
 # ==============================================================================
 # 6. 回測與繪圖邏輯 (Backtest & Plotting)
 # ==============================================================================
@@ -634,6 +633,7 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     """ 
     執行基於 SMA 20 / EMA 50 交叉的簡單回測。
     策略: 黃金交叉買入 (做多)，死亡交叉清倉 (賣出)。
+    【已更新回測結果計算邏輯】
     """
     if df.empty or len(df) < 51: 
         return {"total_return": 0, "win_rate": 0, "max_drawdown": 0, "total_trades": 0, "message": "數據不足 (少於 51 週期) 或計算錯誤。"}
@@ -718,9 +718,7 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     index_to_use = data.index[:len(capital)]
     capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
 
-    # --- 應用使用者要求的計算邏輯 ---
-    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
-    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
+    # --- 應用使用者要求的計算邏輯，並使用 current_capital 計算總報酬 ---
     total_return = ((current_capital - initial_capital) / initial_capital) * 100
     total_trades = len(trades)
     win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
@@ -739,10 +737,9 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
         "capital_curve": capital_series
     }
 
-def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, backtest_curve):
+def plot_chart(df, symbol_name, period_name, sl_tp_levels, backtest_curve):
     """
     K線、技術指標與交易目標繪圖
-    (此函數假設 Streamlit 介面和 Plotly 繪圖邏輯從原始檔案末端延續並正確使用所有指標)
     """
     
     # 確保 DF 包含所有核心指標欄位
@@ -798,12 +795,8 @@ def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, bac
     fig.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0, row=3, col=1)
     fig.add_hline(y=50, line_dash="dash", line_color="gray", row=3, col=1)
 
-    # --- Row 4: Volume (OBV, CMF, MFI, Volume) ---
-    # 原始程式碼的 Volume 繪圖通常在主圖或獨立子圖，此處使用 Volume 條形圖作為基礎
-    # 雖然 CMF, MFI, OBV 已經計算在 DF 內，但在 Streamlit 介面中通常不會全部繪製。
-    # 為了展示 Volatility & Volume 指標的使用，我們在子圖展示 Volume。
+    # --- Row 4: Volume ---
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='rgba(0,0,0,0.5)', opacity=0.5), row=4, col=1)
-    # 註: CMF, MFI, OBV 可作為額外的子圖或表格展示，在此處不增加更多子圖以保持版面簡潔
     
     # 更新佈局
     fig.update_layout(
@@ -820,10 +813,8 @@ def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, bac
     fig.update_yaxes(title_text='RSI', range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text='量能', row=4, col=1)
     
-    # 增加資金曲線子圖 (原設計的一部分)
+    # 資金曲線獨立繪製（不嵌入 K 線圖中）
     if backtest_curve is not None and not backtest_curve.empty:
-        # 在 Streamlit 中，通常會將資金曲線獨立出來或在主圖中以折線圖呈現。
-        # 為了完整性，這裡假定它獨立繪製。
         st.subheader("💰 回測資金曲線")
         fig_curve = go.Figure()
         fig_curve.add_trace(go.Scatter(x=backtest_curve.index, y=backtest_curve.values, mode='lines', name='資金淨值曲線', line=dict(color='green', width=2)))
@@ -914,7 +905,7 @@ def main():
         st.markdown(f"**類別：** {info['category']} | **週期：** {period_name}")
         st.markdown("---")
 
-        with st.spinner(f"正在獲取 {info['name']} 的數據..."):
+        with st.spinner(f"正在獲取 {info['name']} 的數據並進行運算..."):
             # 獲取歷史數據
             df = get_stock_data(symbol, period, interval)
             
@@ -923,106 +914,122 @@ def main():
                 st.session_state.data_df = pd.DataFrame()
                 return
 
-            # --- Step 1: 運行統一的指標計算 ---
+            # --- 數據處理與指標計算 ---
             df = calculate_comprehensive_indicators(df)
             st.session_state.data_df = df
             current_price = df['Close'].iloc[-1]
-            
-            # 兩個並行執行以加速
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("💡 交易目標 (SL/TP) 共識")
-                # --- Step 2: 運行多策略共識計算 ---
-                consensus_sl, consensus_tp, strategy_details = get_consensus_levels(df.copy(), current_price)
-                st.session_state.sl_tp_levels = {'SL': consensus_sl, 'TP': consensus_tp}
-                st.session_state.strategy_details = strategy_details
-                
-                currency = get_currency_symbol(symbol)
-                st.info(f"當前價格: **{currency} {current_price:,.2f}**")
-                
-                st.metric(label="✅ 共識止盈 (TP)", value=f"{currency} {consensus_tp:,.2f}" if pd.notna(consensus_tp) else "N/A", delta=f"{((consensus_tp - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_tp) else None)
-                st.metric(label="❌ 共識止損 (SL)", value=f"{currency} {consensus_sl:,.2f}" if pd.notna(consensus_sl) else "N/A", delta=f"{((consensus_sl - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_sl) else None, delta_color="inverse")
+            fa_ratings = get_fundamental_ratings(symbol)
+            st.session_state.fa_ratings = fa_ratings
+            ai_rating = fa_ratings['AI_SCORE']
+            consensus_sl, consensus_tp, strategy_details = get_consensus_levels(df.copy(), current_price)
+            st.session_state.sl_tp_levels = {'SL': consensus_sl, 'TP': consensus_tp}
+            st.session_state.strategy_details = strategy_details
+            ai_signal = generate_ai_fusion_signal(df, ai_rating, {'inst_hold_pct': 0})
+            st.session_state.ai_signal = ai_signal
+            currency = get_currency_symbol(symbol)
+            backtest_results = run_backtest(df.copy())
+            st.session_state.backtest_results = backtest_results
 
-            with col2:
-                # --- Step 3: 運行基本面評分 (統一函數) ---
-                fa_ratings = get_fundamental_ratings(symbol)
-                st.session_state.fa_ratings = fa_ratings
-                
-                ai_rating = fa_ratings['AI_SCORE']
-                
-                st.subheader("🤖 AI 融合信號")
-                
-                # --- Step 4: 運行 AI 融合信號 (假設 chips_news_data 為空字典) ---
-                # 注意：此處需傳入 AI_SCORE 部分
-                ai_signal = generate_ai_fusion_signal(df, ai_rating, {'inst_hold_pct': 0})
-                st.session_state.ai_signal = ai_signal
-                
-                score_str = f"({ai_signal['score']:+.2f})"
-                if '買進' in ai_signal['action']:
-                    st.success(f"**{ai_signal['action']}** {score_str}")
-                elif '賣出' in ai_signal['action']:
-                    st.error(f"**{ai_signal['action']}** {score_str}")
-                else:
-                    st.warning(f"**{ai_signal['action']}** {score_str}")
-                
-                st.caption(f"信心水準: **{ai_signal['confidence']:.1f}%**")
-                
-            st.markdown("---")
-            
-            # --- 技術指標詳細分析與回測 ---
-            tech_tab, fa_tab, backtest_tab = st.tabs(["📊 技術指標深度解析", "📜 基本面/籌碼評級", "⏱️ 簡化回測報告"])
-            
-            with tech_tab:
-                st.subheader("技術指標AI解讀 (進階參數)")
-                # --- Step 5: 運行技術分析數據表格 (使用 DISPLAY 欄位) ---
-                tech_df = get_technical_data_df(df)
-                if not tech_df.empty:
-                    tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
-                    st.table(tech_df)
-                
-                st.subheader("SL/TP 策略細節")
-                # 策略細節展示 (使用 strategy_details)
-                details_df = pd.DataFrame(strategy_details, index=['SL', 'TP']).T.applymap(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
-                st.dataframe(details_df)
-                
-            with fa_tab:
-                display_rating = fa_ratings['DISPLAY_SCORE']
-                st.subheader(f"綜合基本面評級: {display_rating['Message']} ({display_rating['Combined_Rating']:.1f}/9.0)")
-                
-                if display_rating['Details']:
-                    details_data = [[k, v] for k, v in display_rating['Details'].items()]
-                    st.table(pd.DataFrame(details_data, columns=['評分項目', '分數']))
+        
+        # =================================================================
+        # 報告區塊 - 依據使用者要求的順序重新排列
+        # =================================================================
 
-                # 展示 AI Fusion 所依賴的 Advanced Rating 
-                st.subheader("AI 模型依賴的財務數據")
-                ai_details = fa_ratings['AI_SCORE']['details']
-                details_data = [[k, v] for k, v in ai_details.items()]
-                st.table(pd.DataFrame(details_data, columns=['指標', '數值']))
+        # 1. 核心行動與量化評分 (AI Fusion Signal)
+        st.header("1️⃣ 核心行動與量化評分")
+        col_signal, col_score = st.columns([1, 1])
+        
+        with col_signal:
+            st.subheader("🤖 AI 融合信號")
+            score_str = f"({ai_signal['score']:+.2f})"
+            if '買進' in ai_signal['action']:
+                st.success(f"**{ai_signal['action']}** {score_str}", icon="⬆️")
+            elif '賣出' in ai_signal['action']:
+                st.error(f"**{ai_signal['action']}** {score_str}", icon="⬇️")
+            else:
+                st.warning(f"**{ai_signal['action']}** {score_str}", icon="↔️")
+            st.caption(f"信心水準: **{ai_signal['confidence']:.1f}%** (AI 綜合判斷力)")
+        
+        with col_score:
+            st.subheader("📌 當前價格")
+            st.info(f"**{currency} {current_price:,.2f}**", icon="💰")
+            display_rating = fa_ratings['DISPLAY_SCORE']
+            st.caption(f"基本面評級: {display_rating['Message']} ({display_rating['Combined_Rating']:.1f}/9.0)")
+            
+        st.markdown("---")
+
+        # 2. 交易策略與風險控制 (SL/TP 共識)
+        st.header("2️⃣ 交易策略與風險控制")
+        col_tp, col_sl = st.columns(2)
+        
+        with col_tp:
+            st.metric(label="✅ 共識止盈 (TP) 目標價", value=f"{currency} {consensus_tp:,.2f}" if pd.notna(consensus_tp) else "N/A", delta=f"{((consensus_tp - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_tp) else None)
+        with col_sl:
+            st.metric(label="❌ 共識止損 (SL) 參考價", value=f"{currency} {consensus_sl:,.2f}" if pd.notna(consensus_sl) else "N/A", delta=f"{((consensus_sl - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_sl) else None, delta_color="inverse")
+            
+        st.markdown("---")
+            
+        # 3. SL/TP 策略細節
+        st.header("3️⃣ SL/TP 策略細節 (多策略參考)")
+        details_df = pd.DataFrame(strategy_details, index=['SL', 'TP']).T.applymap(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+        st.dataframe(details_df, use_container_width=True)
+        st.markdown("---")
 
 
-            with backtest_tab:
-                st.subheader("SMA 20 / EMA 50 交叉策略回測")
-                # --- Step 6: 運行回測 (使用 SMA 20, EMA 50) ---
-                backtest_results = run_backtest(df.copy())
-                st.session_state.backtest_results = backtest_results
-                
-                if backtest_results['total_trades'] > 0:
-                    st.success(f"回測週期內總報酬率: **{backtest_results['total_return']:,.2f}%**")
-                    col_b1, col_b2, col_b3 = st.columns(3)
-                    col_b1.metric("交易次數", backtest_results['total_trades'])
-                    col_b2.metric("勝率", f"{backtest_results['win_rate']:,.2f}%")
-                    col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
-                    st.caption(backtest_results['message'])
-                else:
-                    st.warning(backtest_results['message'])
-                    
-            st.markdown("---")
+        # 4. 技術指標狀態表 (結合技術指標 AI 解讀)
+        st.header("4️⃣ 關鍵技術指標數據")
+        
+        tab_tech_table, tab_fa_details, tab_ai_opinion = st.tabs(["📊 技術指標 AI 解讀", "📜 基本面/籌碼評級", "💡 AI 判斷意見"])
+
+        with tab_tech_table:
+            st.subheader("技術指標狀態與 AI 解讀")
+            tech_df = get_technical_data_df(df)
+            if not tech_df.empty:
+                tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+                st.table(tech_df)
+
+        with tab_fa_details:
+            st.subheader("基本面評級詳情")
+            display_rating = fa_ratings['DISPLAY_SCORE']
+            st.markdown(f"**綜合評級:** **{display_rating['Message']}** ({display_rating['Combined_Rating']:.1f}/9.0)")
             
-            # --- 繪圖 ---
-            # 繪圖函數需要用到多個指標，確保指標計算統一後，繪圖邏輯依然適用
-            plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, st.session_state.strategy_details, st.session_state.backtest_results.get('capital_curve'))
-            st.plotly_chart(plot_fig, use_container_width=True)
+            if display_rating['Details']:
+                details_data = [[k, v] for k, v in display_rating['Details'].items()]
+                st.table(pd.DataFrame(details_data, columns=['評分項目', '分數']))
+
+            st.subheader("AI 模型依賴的關鍵財務數據")
+            ai_details = fa_ratings['AI_SCORE']['details']
+            details_data = [[k, v] for k, v in ai_details.items()]
+            st.table(pd.DataFrame(details_data, columns=['指標', '數值']))
+        
+        with tab_ai_opinion:
+            st.subheader("AI 融合信號細節意見")
+            opinions_data = [[k, v] for k, v in ai_signal['ai_opinions'].items()]
+            st.table(pd.DataFrame(opinions_data, columns=['分析模組', '結論']))
+            
+        st.markdown("---")
+        
+        # 5. 策略回測報告
+        st.header("5️⃣ 策略回測報告 (SMA 20 / EMA 50 交叉)")
+        
+        if backtest_results['total_trades'] > 0:
+            st.success(f"回測週期內總報酬率: **{backtest_results['total_return']:,.2f}%**", icon="📈")
+            col_b1, col_b2, col_b3 = st.columns(3)
+            col_b1.metric("交易次數", backtest_results['total_trades'])
+            col_b2.metric("勝率", f"{backtest_results['win_rate']:,.2f}%")
+            col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
+            st.caption(backtest_results['message'])
+            # 資金曲線圖 (在 plot_chart 內獨立呼叫)
+            plot_chart(pd.DataFrame(), "", "", {}, st.session_state.backtest_results.get('capital_curve'))
+        else:
+            st.warning(backtest_results['message'])
+        
+        st.markdown("---")
+
+        # 6. 完整技術分析圖表 (放在最後)
+        st.header("6️⃣ 完整技術分析圖表")
+        plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, None) # 資金曲線獨立繪製，這裡傳 None
+        st.plotly_chart(plot_fig, use_container_width=True)
 
     else:
         display_homepage()
