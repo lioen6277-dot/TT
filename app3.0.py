@@ -535,99 +535,117 @@ def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
     return {'action': action, 'score': total_score, 'confidence': confidence, 'ai_opinions': opinions}
 
 def get_technical_data_df(df):
-    """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。
-       修改：將 '分析結論' 用 HTML 包 span 上色，回傳 DataFrame 但前端用 HTML table 顯示以保留顏色。
-    """
-    if df.empty or len(df) < 200:
-        return pd.DataFrame()
-
+    """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
+    
+    # 重新定義 COLOR_MAP
+    COLOR_MAP = {
+        "red": "#FA8072",      # 強勢多頭/潛在買點 (淡紅色)
+        "green": "#6BE279",    # 強勢空頭/潛在賣點 (淡綠色)
+        "orange": "#FFD700",   # 中性/動能增強 (金色)
+        "blue": "#ADD8E6",     # 盤整/正常 (淡藍色)
+        "grey": "#A9A9A9",     # 預設
+    }
+    
+    if df.empty or len(df) < 200: return pd.DataFrame()
     df_clean = df.dropna().copy()
-    if df_clean.empty:
-        return pd.DataFrame()
-
+    if df_clean.empty: return pd.DataFrame()
+    
     last_row = df_clean.iloc[-1]
     prev_row = df_clean.iloc[-2] if len(df_clean) >= 2 else last_row
 
-    # 使用 calculate_comprehensive_indicators 產生的 DISPLAY 欄位
-    indicators = {
-        '價格 vs. EMA 10/50/200': last_row['Close'],
-        'RSI (9) 動能': last_row['RSI'],         # 使用 RSI(9)
-        'MACD (8/17/9) 柱狀圖': last_row['MACD'], # 使用 MACD(8/17/9)
-        'ADX (9) 趨勢強度': last_row['ADX'],     # 使用 ADX(9)
-        'ATR (9) 波動性': last_row['ATR'],       # 使用 ATR(9)
-        '布林通道 (BB: 20/2)': last_row['Close'],
-    }
+    required_cols = ['EMA_10', 'EMA_50', 'EMA_200', 'RSI', 'MACD', 'ADX', 'ATR', 'BB_High', 'BB_Low']
+    if not all(col in last_row for col in required_cols):
+        return pd.DataFrame()
 
+    indicators = {}
+    indicators['價格 vs. EMA 10/50/200'] = last_row['Close']
+    indicators['RSI (9) 動能'] = last_row['RSI']
+    indicators['MACD (8/17/9) 柱狀圖'] = last_row['MACD']
+    indicators['ADX (9) 趨勢強度'] = last_row['ADX']
+    indicators['ATR (9) 波動性'] = last_row['ATR']
+    indicators['布林通道 (BB: 20/2)'] = last_row['Close']
+    
     data = []
+    
     for name, value in indicators.items():
-        conclusion, color = "", "grey"
+        conclusion, color_key = "", "grey"
 
         if 'EMA 10/50/200' in name:
+            # 趨勢分析
             ema_10 = last_row['EMA_10']
             ema_50 = last_row['EMA_50']
             ema_200 = last_row['EMA_200']
-
             if ema_10 > ema_50 and ema_50 > ema_200:
-                conclusion, color = "強多頭：MA 多頭排列 (10>50>200)", "red"
+                conclusion, color_key = f"**強多頭：MA 多頭排列** (10>50>200)", "red"
             elif ema_10 < ema_50 and ema_50 < ema_200:
-                conclusion, color = "強空頭：MA 空頭排列 (10<50<200)", "green"
-            elif last_row['Close'] > ema_50 and last_row['Close'] > ema_200:
-                conclusion, color = "中長線偏多：價格站上 EMA 50/200", "orange"
+                conclusion, color_key = f"**強空頭：MA 空頭排列** (10<50<200)", "green"
+            elif ema_10 > ema_50 or ema_50 > ema_200:
+                 conclusion, color_key = "中性偏多：MA 偏多排列", "orange"
             else:
-                conclusion, color = "中性：MA 糾結或趨勢發展中", "blue"
-
+                conclusion, color_key = "盤整：MA 交錯", "blue"
+            
         elif 'RSI' in name:
+            # 動能分析 (RSI 9)
             if value > 70:
-                conclusion, color = "警告：超買區域 (70)，潛在回調", "red"
+                conclusion, color_key = "空頭：超買區域 (> 70)，潛在回調", "green" 
             elif value < 30:
-                conclusion, color = "強化：超賣區域 (30)，潛在反彈", "green"
+                conclusion, color_key = "多頭：超賣區域 (< 30)，潛在反彈", "red"
             elif value > 50:
-                conclusion, color = "多頭：RSI > 50，位於強勢區間", "red"
+                conclusion, color_key = "多頭：RSI > 50，位於強勢區間", "red"
             else:
-                conclusion, color = "空頭：RSI < 50，位於弱勢區間", "green"
-
+                conclusion, color_key = "空頭：RSI < 50，位於弱勢區間", "green"
+        
         elif 'MACD' in name:
+            # 動能趨勢 (MACD 柱狀圖)
             if value > 0 and value > prev_row['MACD']:
-                conclusion, color = "強化：多頭動能增強 (紅柱放大)", "red"
+                conclusion, color_key = "強化：多頭動能增強 (紅柱放大)", "red"
             elif value < 0 and value < prev_row['MACD']:
-                conclusion, color = "削弱：空頭動能增強 (綠柱放大)", "green"
+                conclusion, color_key = "強化：空頭動能增強 (綠柱放大)", "green"
+            elif value > 0 and value < prev_row['MACD']:
+                 conclusion, color_key = "中性：多頭動能收縮 (潛在回調)", "orange"
+            elif value < 0 and value > prev_row['MACD']:
+                 conclusion, color_key = "中性：空頭動能收縮 (潛在反彈)", "orange"
             else:
-                conclusion, color = "中性：動能盤整 (柱狀收縮)", "orange"
-
+                conclusion, color_key = "中性：動能盤整 (柱狀收縮)", "blue"
+        
         elif 'ADX' in name:
+            # 趨勢強度 (ADX 9)
             if value >= 40:
-                conclusion, color = "強趨勢：極強勢趨勢 (多或空)", "red"
+                conclusion, color_key = f"**強趨勢：極強趨勢** (ADX >= 40)", "red"
             elif value >= 25:
-                conclusion, color = "強趨勢：確認強勢趨勢 (ADX > 25)", "orange"
+                conclusion, color_key = f"趨勢：趨勢確認 (ADX >= 25)", "orange"
             else:
-                conclusion, color = "盤整：弱勢或橫盤整理 (ADX < 25)", "blue"
-
+                conclusion, color_key = f"盤整：弱勢或橫盤整理 (ADX < 25)", "blue"
+        
         elif 'ATR' in name:
-            avg_atr = df_clean['ATR'].iloc[-30:].mean() if len(df_clean) >= 30 else df_clean['ATR'].mean()
-            if value > avg_atr * 1.5:
-                conclusion, color = "警告：極高波動性 (1.5x 平均)", "red"
-            elif value < avg_atr * 0.7:
-                conclusion, color = "中性：低波動性 (醞釀突破)", "orange"
+            # 波動性 (ATR 9) - 增加判斷以提供更有用的訊息
+            atr_ratio = value / last_row['Close'] * 100
+            atr_mean = df_clean['ATR'].mean()
+            if value > atr_mean * 1.5:
+                conclusion, color_key = f"高波動：{atr_ratio:.2f}% (潛在機會/風險)", "orange"
+            elif value < atr_mean * 0.75:
+                conclusion, color_key = f"低波動：{atr_ratio:.2f}% (潛在突破/沉寂)", "blue"
             else:
-                conclusion, color = "中性：正常波動性", "blue"
+                conclusion, color_key = f"中性：正常波動性 ({atr_ratio:.2f}% 寬度)", "blue"
 
         elif '布林通道' in name:
-            high = last_row['BB_High']
-            low = last_row['BB_Low']
-            range_pct = (high - low) / last_row['Close'] * 100
-            if last_row['Close'] > high:
-                conclusion, color = f"警告：價格位於上軌外側 (> {high:,.2f})", "red"
-            elif last_row['Close'] < low:
-                conclusion, color = f"強化：價格位於下軌外側 (< {low:,.2f})", "green"
+            # 布林通道 (BB 20, 2)
+            bb_width_pct = (last_row['BB_High'] - last_row['BB_Low']) / last_row['Close'] * 100
+            
+            if value > last_row['BB_High']:
+                conclusion, color_key = f"**空頭：突破上軌** (潛在回調)", "green"
+            elif value < last_row['BB_Low']:
+                conclusion, color_key = f"**多頭：跌破下軌** (潛在反彈)", "red"
             else:
-                conclusion, color = f"中性：在上下軌間 ({range_pct:.2f}% 寬度)", "blue"
+                conclusion, color_key = f"中性：在上下軌間 ({bb_width_pct:.2f}% 寬度)", "blue"
 
-        # 用 HTML 包裝分析結論以便上色（前端用 st.markdown 顯示）
-        conclusion_html = f"<span style='color:{color};'>{conclusion}</span>"
-        data.append([name, value, conclusion_html, color])
+        # 應用顏色樣式到結論文本
+        colored_conclusion = f"<span style='color: {COLOR_MAP.get(color_key, COLOR_MAP['grey'])}; font-weight: bold;'>{conclusion}</span>"
+        
+        # 將指標名稱、原始值、帶有顏色的結論文本、以及用於背景色的 'color_key' 存入
+        data.append([name, value, colored_conclusion, color_key])
 
     technical_df = pd.DataFrame(data, columns=['指標名稱', '最新值', '分析結論', '顏色'])
-    technical_df = technical_df.set_index('指標名稱')
     return technical_df
 
 # ==============================================================================
@@ -1066,31 +1084,55 @@ except Exception:
             ["📊 技術指標 AI 解讀", "📜 基本面/籌碼評級", "💡 AI 判斷意見"]
         )
 
-with tab_tech_table:
-    st.subheader("技術指標狀態與 AI 解讀")
-    tech_df = get_technical_data_df(df)
-    if not tech_df.empty:
-        # 將數值格式化（但分析結論保留 HTML）
-        display_rows = []
-        for idx, row in tech_df.iterrows():
-            latest_val = row['最新值']
-            latest_str = f"{latest_val:,.2f}" if pd.notna(latest_val) else "N/A"
-            conclusion_html = row['分析結論']  # 已為 HTML span
-            color = row['顏色']
-            display_rows.append((idx, latest_str, conclusion_html, color))
-
-        # 產生簡單的 HTML table，以便渲染 colored conclusion
-        html = "<table style='width:100%; border-collapse: collapse;'>"
-        html += "<thead><tr style='text-align:left;'><th style='padding:6px; border-bottom:1px solid #ddd;'>指標名稱</th><th style='padding:6px; border-bottom:1px solid #ddd;'>最新值</th><th style='padding:6px; border-bottom:1px solid #ddd;'>分析結論</th></tr></thead><tbody>"
-        for name, val, concl_html, color in display_rows:
-            html += f"<tr><td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{name}</td>"
-            html += f"<td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{val}</td>"
-            html += f"<td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{concl_html}</td></tr>"
-        html += "</tbody></table>"
-
-        st.markdown(html, unsafe_allow_html=True)
-    else:
-        st.write("找不到技術指標資料。")
+  with tab_tech_table:
+            st.subheader("技術指標狀態與 AI 解讀")
+            tech_df = get_technical_data_df(df)
+            
+            if not tech_df.empty:
+                # 數值格式化
+                tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+                
+                # --- 新增/調整顏色映射，用於HTML背景色 ---
+                # 定義 AI 結論顏色與對應的輕量背景色
+                BG_COLOR_MAP = {
+                    "red": "rgba(250, 128, 114, 0.15)",  # Light salmon with opacity
+                    "green": "rgba(107, 226, 121, 0.15)", # Light green with opacity
+                    "orange": "rgba(255, 215, 0, 0.15)", # Light gold with opacity
+                    "blue": "rgba(173, 216, 230, 0.15)", # Light blue with opacity
+                    "grey": "rgba(169, 169, 169, 0.05)",
+                }
+                # --- 顏色映射結束 ---
+                
+                # 準備顯示數據 (包含顏色鍵)
+                display_data = tech_df[['指標名稱', '最新值', '分析結論', '顏色']].reset_index(drop=True)
+                
+                # 使用 HTML 渲染，以便套用背景色
+                html_table = f"""
+                <table style='width:100%; border-collapse: collapse; font-size: 14px;'>
+                    <tr style='background-color: #f0f0f0;'>
+                        <th style='padding: 10px; border: 1px solid #ddd; text-align: left; width: 30%;'>指標名稱</th>
+                        <th style='padding: 10px; border: 1px solid #ddd; text-align: right; width: 20%;'>最新值</th>
+                        <th style='padding: 10px; border: 1px solid #ddd; text-align: left; width: 50%;'>分析結論</th>
+                    </tr>
+                """
+                for index, row in display_data.iterrows():
+                    # 獲取顏色鍵並映射到背景色
+                    color_key = row['顏色']
+                    bg_color = BG_COLOR_MAP.get(color_key, BG_COLOR_MAP['grey'])
+                    
+                    # 將背景色應用到結論單元格，並加粗數值單元格
+                    html_table += f"""
+                    <tr>
+                        <td style='padding: 8px; border: 1px solid #ddd;'>{row['指標名稱']}</td>
+                        <td style='padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;'>{row['最新值']}</td>
+                        <td style='padding: 8px; border: 1px solid #ddd; background-color: {bg_color};'>{row['分析結論']}</td>
+                    </tr>
+                    """
+                html_table += "</table>"
+                
+                st.markdown(html_table, unsafe_allow_html=True)
+            else:
+                st.info("數據不足，無法生成技術指標解讀。")
 
         with tab_fa_details:
             st.subheader("基本面評級詳情")
@@ -1182,3 +1224,4 @@ if __name__ == '__main__':
     st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
     st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
     st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
