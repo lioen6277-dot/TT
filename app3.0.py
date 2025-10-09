@@ -640,9 +640,8 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
 
     data = df.copy()
     
-    # 確保 SMA_20 和 EMA_50 已計算 (由 calculate_comprehensive_indicators 提供)
+    # 確保 SMA_20 和 EMA_50 已計算
     if 'SMA_20' not in data.columns or 'EMA_50' not in data.columns:
-        # 緊急情況：如果上游忘記調用計算函數，則在此處補救
         data['SMA_20'] = ta.trend.sma_indicator(data['Close'], window=20) 
         data['EMA_50'] = ta.trend.ema_indicator(data['Close'], window=50)
 
@@ -676,7 +675,7 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
             buy_price = current_close
             current_capital -= current_capital * commission_rate
 
-        # 2. Sell Signal
+        # 2. Sell Signal (Exit Trade)
         elif data['Signal'].iloc[i] == -1 and position == 1:
             sell_price = current_close
             profit = (sell_price - buy_price) / buy_price
@@ -697,11 +696,8 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
             
         capital.append(current_value)
 
-    # 3. Handle open position (清倉)
+    # 3. Handle open position (清倉) - 確保最終資金曲線反映實際淨值
     if position == 1:
-        # Note: The original logic here is problematic (appending a trade to the last date
-        # then modifying initial_capital). I am preserving the *intent* of the original 
-        # code to close the position at the last price for final calculation.
         sell_price = data['Close'].iloc[-1]
         profit = (sell_price - buy_price) / buy_price
         
@@ -714,23 +710,26 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
         current_capital *= (1 + profit)
         current_capital -= current_capital * commission_rate
         
-        # 修正：確保最後一個 capital 點是清倉後的最終值
+        # 將最終清倉後的淨值更新到 capital 列表的最後一個元素
         if capital:
             capital[-1] = current_capital 
+    
+    # 由於 capital 列表包含 initial_capital，其長度應為 len(data)
+    index_to_use = data.index[:len(capital)]
+    capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
 
-    # --- 計算回測結果 ---
-    total_return = ((current_capital - 100000) / 100000) * 100
+    # --- 應用使用者要求的計算邏輯 ---
+    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
+    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
+    total_return = ((current_capital - initial_capital) / initial_capital) * 100
     total_trades = len(trades)
     win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
     
-    # 確保 capital_series 長度與 data index 一致
-    index_to_use = data.index[:len(capital)]
-    capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
-    
+    # 最大回撤計算
     max_value = capital_series.expanding(min_periods=1).max()
     drawdown = (capital_series - max_value) / max_value
     max_drawdown = abs(drawdown.min()) * 100
-
+    
     return {
         "total_return": round(total_return, 2),
         "win_rate": round(win_rate, 2),
@@ -1031,3 +1030,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
