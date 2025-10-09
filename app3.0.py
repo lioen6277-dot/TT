@@ -200,7 +200,7 @@ def get_currency_symbol(symbol):
     else: return currency_code + ' '
 
 # ==============================================================================
-# 3. 多策略止損止盈函數 (SL/TP Strategy Functions) - 保持原始設計
+# 3. 多策略止損止盈函數 (SL/TP Strategy Functions)
 # ==============================================================================
 
 def support_resistance(df, lookback=60):
@@ -534,7 +534,10 @@ def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
     return {'action': action, 'score': total_score, 'confidence': confidence, 'ai_opinions': opinions}
 
 def get_technical_data_df(df):
-    """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
+    """
+    獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。
+    【已修正: 將分析結論套用顏色並新增顏色映射】
+    """
     
     if df.empty or len(df) < 200: return pd.DataFrame()
 
@@ -555,8 +558,17 @@ def get_technical_data_df(df):
     
     data = []
     
+    # 顏色映射
+    COLOR_MAP = {
+        "red": "#FA8072",      # 強勢多頭/潛在買點 (淡紅色)
+        "green": "#6BE279",    # 強勢空頭/潛在賣點 (淡綠色)
+        "orange": "#FFD700",   # 中性/動能增強 (金色)
+        "blue": "#ADD8E6",     # 盤整/正常 (淡藍色)
+        "grey": "#A9A9A9",     # 預設
+    }
+
     for name, value in indicators.items():
-        conclusion, color = "", "grey"
+        conclusion, color_key = "", "grey"
         
         if 'EMA 10/50/200' in name:
             ema_10 = last_row['EMA_10']
@@ -564,49 +576,49 @@ def get_technical_data_df(df):
             ema_200 = last_row['EMA_200']
 
             if ema_10 > ema_50 and ema_50 > ema_200:
-                conclusion, color = f"**強多頭：MA 多頭排列** (10>50>200)", "red"
+                conclusion, color_key = f"**強多頭：MA 多頭排列** (10>50>200)", "red"
             elif ema_10 < ema_50 and ema_50 < ema_200:
-                conclusion, color = f"**強空頭：MA 空頭排列** (10<50<200)", "green"
+                conclusion, color_key = f"**強空頭：MA 空頭排列** (10<50<200)", "green"
             elif last_row['Close'] > ema_50 and last_row['Close'] > ema_200:
-                conclusion, color = f"中長線偏多：價格站上 EMA 50/200", "orange"
+                conclusion, color_key = f"中長線偏多：價格站上 EMA 50/200", "orange"
             else:
-                conclusion, color = "中性：MA 糾結或趨勢發展中", "blue"
+                conclusion, color_key = "中性：MA 糾結或趨勢發展中", "blue"
         
         elif 'RSI' in name:
             if value > 70:
-                conclusion, color = "警告：超買區域 (70)，潛在回調", "green" 
+                conclusion, color_key = "警告：超買區域 (70)，潛在回調", "green" 
             elif value < 30:
-                conclusion, color = "強化：超賣區域 (30)，潛在反彈", "red"
+                conclusion, color_key = "強化：超賣區域 (30)，潛在反彈", "red"
             elif value > 50:
-                conclusion, color = "多頭：RSI > 50，位於強勢區間", "red"
+                conclusion, color_key = "多頭：RSI > 50，位於強勢區間", "red"
             else:
-                conclusion, color = "空頭：RSI < 50，位於弱勢區間", "green"
+                conclusion, color_key = "空頭：RSI < 50，位於弱勢區間", "green"
 
         elif 'MACD' in name:
             # 判斷 MACD 柱狀圖是否放大 (使用 Display 欄位 MACD)
             if value > 0 and value > prev_row['MACD']:
-                conclusion, color = "強化：多頭動能增強 (紅柱放大)", "red"
+                conclusion, color_key = "強化：多頭動能增強 (紅柱放大)", "red"
             elif value < 0 and value < prev_row['MACD']:
-                conclusion, color = "削弱：空頭動能增強 (綠柱放大)", "green"
+                conclusion, color_key = "削弱：空頭動能增強 (綠柱放大)", "green"
             else:
-                conclusion, color = "中性：動能盤整 (柱狀收縮)", "orange"
+                conclusion, color_key = "中性：動能盤整 (柱狀收縮)", "orange"
         
         elif 'ADX' in name:
             if value >= 40:
-                conclusion, color = "強趨勢：極強勢趨勢 (多或空)", "red"
+                conclusion, color_key = "強趨勢：極強勢趨勢 (多或空)", "red"
             elif value >= 25:
-                conclusion, color = "強趨勢：確認強勢趨勢 (ADX > 25)", "orange"
+                conclusion, color_key = "強趨勢：確認強勢趨勢 (ADX > 25)", "orange"
             else:
-                conclusion, color = "盤整：弱勢或橫盤整理 (ADX < 25)", "blue"
+                conclusion, color_key = "盤整：弱勢或橫盤整理 (ADX < 25)", "blue"
 
         elif 'ATR' in name:
             avg_atr = df_clean['ATR'].iloc[-30:].mean() if len(df_clean) >= 30 else df_clean['ATR'].mean()
             if value > avg_atr * 1.5:
-                conclusion, color = "警告：極高波動性 (1.5x 平均)", "green"
+                conclusion, color_key = "警告：極高波動性 (1.5x 平均)", "green"
             elif value < avg_atr * 0.7:
-                conclusion, color = "中性：低波動性 (醞釀突破)", "orange"
+                conclusion, color_key = "中性：低波動性 (醞釀突破)", "orange"
             else:
-                conclusion, color = "中性：正常波動性", "blue"
+                conclusion, color_key = "中性：正常波動性", "blue"
 
         elif '布林通道' in name:
             high = last_row['BB_High']
@@ -614,13 +626,16 @@ def get_technical_data_df(df):
             range_pct = (high - low) / last_row['Close'] * 100
             
             if value > high:
-                conclusion, color = f"警告：價格位於上軌外側 (>{high:,.2f})", "red"
+                conclusion, color_key = f"警告：價格位於上軌外側 (>{high:,.2f})", "red"
             elif value < low:
-                conclusion, color = f"強化：價格位於下軌外側 (<{low:,.2f})", "green"
+                conclusion, color_key = f"強化：價格位於下軌外側 (<{low:,.2f})", "green"
             else:
-                conclusion, color = f"中性：在上下軌間 ({range_pct:.2f}% 寬度)", "blue"
+                conclusion, color_key = f"中性：在上下軌間 ({range_pct:.2f}% 寬度)", "blue"
         
-        data.append([name, value, conclusion, color])
+        # 應用顏色樣式
+        colored_conclusion = f"<span style='color: {COLOR_MAP.get(color_key, COLOR_MAP['grey'])}; font-weight: bold;'>{conclusion}</span>"
+        
+        data.append([name, value, colored_conclusion, color_key])
 
     technical_df = pd.DataFrame(data, columns=['指標名稱', '最新值', '分析結論', '顏色'])
     technical_df = technical_df.set_index('指標名稱')
@@ -856,8 +871,6 @@ def plot_chart(df, symbol_name, period_name, sl_tp_levels, backtest_curve):
     fig.update_yaxes(title_text='RSI', range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text='量能', row=4, col=1)
     
-    # 資金曲線獨立繪製（原程式碼中的此區塊已移除，邏輯移至最上方 df.empty 判斷中）
-        
     return fig
 
 # ==============================================================================
@@ -951,14 +964,18 @@ def main():
             df = calculate_comprehensive_indicators(df)
             st.session_state.data_df = df
             current_price = df['Close'].iloc[-1]
+            last_atr = df['ATR'].iloc[-1] # 新增: 獲取最新的 ATR
             fa_ratings = get_fundamental_ratings(symbol)
             st.session_state.fa_ratings = fa_ratings
             ai_rating = fa_ratings['AI_SCORE']
             consensus_sl, consensus_tp, strategy_details = get_consensus_levels(df.copy(), current_price)
             st.session_state.sl_tp_levels = {'SL': consensus_sl, 'TP': consensus_tp}
             st.session_state.strategy_details = strategy_details
+            
+            # 籌碼/新聞數據假設為 0 (沒有實時數據來源)
             ai_signal = generate_ai_fusion_signal(df, ai_rating, {'inst_hold_pct': 0})
             st.session_state.ai_signal = ai_signal
+            
             currency = get_currency_symbol(symbol)
             # 呼叫回測並獲取完整的 trades_list
             backtest_results = run_backtest(df.copy())
@@ -992,21 +1009,56 @@ def main():
             
         st.markdown("---")
 
-        # 2. 交易策略與風險控制 (SL/TP 共識)
-        st.header("2️⃣ 交易策略與風險控制")
+        # 2. 🛡️ 精確交易策略與風險控制 (新增邏輯)
+        st.header("2️⃣ 🛡️ 精確交易策略與風險控制")
+        
+        # 根據 AI 信號決定建議操作
+        suggested_action = ai_signal['action'].split('/')[0] # 取 '強力買進' 或 '中性'
+        
+        # 計算建議進場價 (簡化邏輯: 取 SL/TP 中位數，或接近現價)
+        if pd.notna(consensus_tp) and pd.notna(consensus_sl):
+            entry_price_raw = (consensus_tp + consensus_sl) / 2
+            # 確保進場價接近當前價格
+            if abs(entry_price_raw - current_price) / current_price > 0.1:
+                entry_price_raw = current_price
+        else:
+            entry_price_raw = current_price
+            
+        # 計算風險/回報比 (R:R) - 假設做多 (Buy)，R:R = (TP - Entry) / (Entry - SL)
+        risk_reward_ratio = 0
+        if pd.notna(consensus_tp) and pd.notna(consensus_sl):
+            risk = abs(entry_price_raw - consensus_sl)
+            reward = abs(consensus_tp - entry_price_raw)
+            risk_reward_ratio = reward / risk if risk > 0 else 99.99
+
+        st.markdown(f"**建議操作:** **{suggested_action}**")
+        st.markdown(f"**建議進場價:** <span style='font-size: 1.2em; color: orange;'>**{currency}{entry_price_raw:,.2f}**</span>", unsafe_allow_html=True)
+        
         col_tp, col_sl = st.columns(2)
         
         with col_tp:
-            st.metric(label="✅ 共識止盈 (TP) 目標價", value=f"{currency} {consensus_tp:,.2f}" if pd.notna(consensus_tp) else "N/A", delta=f"{((consensus_tp - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_tp) else None)
+            st.metric(label="🚀 止盈價 (TP)", value=f"{currency} {consensus_tp:,.2f}" if pd.notna(consensus_tp) else "N/A", delta=f"{((consensus_tp - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_tp) else None)
         with col_sl:
-            st.metric(label="❌ 共識止損 (SL) 參考價", value=f"{currency} {consensus_sl:,.2f}" if pd.notna(consensus_sl) else "N/A", delta=f"{((consensus_sl - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_sl) else None, delta_color="inverse")
+            st.metric(label="🛑 止損價 (SL)", value=f"{currency} {consensus_sl:,.2f}" if pd.notna(consensus_sl) else "N/A", delta=f"{((consensus_sl - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_sl) else None, delta_color="inverse")
+            
+        # 策略總結
+        summary_msg = f"基於 **{suggested_action}** 信號，建議在 **{currency}{entry_price_raw:,.2f}** (± {last_atr:,.2f}) 範圍內尋找支撐或等待回調進場。"
+        summary_msg += f" | ⚖️ **風險/回報比 (R:R)**: **{risk_reward_ratio:,.2f}**"
+        summary_msg += f" | 波動單位 (ATR): {last_atr:,.4f}"
+        
+        st.markdown(f"💡 **策略總結:** {summary_msg}")
             
         st.markdown("---")
-            
-        # 3. SL/TP 策略細節
-        st.header("3️⃣ SL/TP 策略細節 (多策略參考)")
-        details_df = pd.DataFrame(strategy_details, index=['SL', 'TP']).T.applymap(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
-        st.dataframe(details_df, use_container_width=True)
+
+        # 3. TP/SL 策略細節 (多策略參考) - 順序已調整
+        st.header("3️⃣ TP/SL 策略細節 (多策略參考)")
+        
+        # 調整 DataFrame 順序
+        details_df_raw = pd.DataFrame(strategy_details, index=['SL', 'TP']).T
+        details_df_fixed = details_df_raw[['TP', 'SL']] # 調整為 TP, SL 順序
+        details_df_display = details_df_fixed.applymap(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+        
+        st.dataframe(details_df_display, use_container_width=True)
         st.markdown("---")
 
 
@@ -1020,7 +1072,33 @@ def main():
             tech_df = get_technical_data_df(df)
             if not tech_df.empty:
                 tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
-                st.table(tech_df)
+                
+                # 準備顯示數據
+                display_data = tech_df[['最新值', '分析結論']].reset_index()
+                
+                # 使用 HTML 渲染，以便套用顏色
+                html_table = f"""
+                <table style='width:100%; border-collapse: collapse;'>
+                    <tr style='background-color: #f0f0f0;'>
+                        <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>指標名稱</th>
+                        <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>最新值</th>
+                        <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>分析結論</th>
+                    </tr>
+                """
+                for index, row in display_data.iterrows():
+                    html_table += f"""
+                    <tr>
+                        <td style='padding: 8px; border: 1px solid #ddd;'>{row['指標名稱']}</td>
+                        <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{row['最新值']}</td>
+                        <td style='padding: 8px; border: 1px solid #ddd;'>{row['分析結論']}</td>
+                    </tr>
+                    """
+                html_table += "</table>"
+                
+                st.markdown(html_table, unsafe_allow_html=True)
+            else:
+                st.info("數據不足，無法生成技術指標解讀。")
+
 
         with tab_fa_details:
             st.subheader("基本面評級詳情")
@@ -1057,8 +1135,7 @@ def main():
                 col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
                 st.caption(backtest_results['message'])
                 
-                # FIX: 這裡呼叫 plot_chart 只為了繪製資金曲線。
-                # plot_chart 內部的新增邏輯會處理 df.empty 時的資金曲線繪製。
+                # 這裡呼叫 plot_chart 只為了繪製資金曲線。
                 plot_chart(pd.DataFrame(), "", "", {}, st.session_state.backtest_results.get('capital_curve'))
             else:
                 st.warning(backtest_results['message'])
