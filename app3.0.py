@@ -737,26 +737,25 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     index_to_use = data.index[:len(capital)]
     capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
 
-    # --- 應用使用者要求的計算邏輯 ---
-    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
-    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
-    total_return = ((current_capital - initial_capital) / initial_capital) * 100
-    total_trades = len(trades)
-    win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
-    
-    # 最大回撤計算
-    max_value = capital_series.expanding(min_periods=1).max()
-    drawdown = (capital_series - max_value) / max_value
-    max_drawdown = abs(drawdown.min()) * 100
-    
+    trades_list = []
+    for t in trades:
+        trades_list.append({
+            "Entry_Date": t.get('entry_date'),
+            "Exit_Date": t.get('exit_date'),
+            "Entry_Price": t.get('entry_price', None) if 'entry_price' in t else None,
+            "Exit_Price": t.get('exit_price', None) if 'exit_price' in t else None,
+            "Profit_Pct": t.get('profit_pct'),
+            "Is_Win": t.get('is_win')
+        })
+
     return {
         "total_return": round(total_return, 2),
         "win_rate": round(win_rate, 2),
         "max_drawdown": round(max_drawdown, 2),
         "total_trades": total_trades,
         "message": f"回測區間 {data.index[0].strftime('%Y-%m-%d')} 到 {data.index[-1].strftime('%Y-%m-%d')}。",
-        "capital_curve": capital_series
-        "trades_list": trades
+        "capital_curve": capital_series,
+        "trades_list": trades_list
     }
 
 def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, backtest_curve):
@@ -906,26 +905,26 @@ def main():
         list(CATEGORY_HOT_OPTIONS.keys())
     )
 
-# 2. 熱門標的選擇
-hot_options = CATEGORY_HOT_OPTIONS.get(category_selection, {})
-option_list = list(hot_options.keys())
+    # 2. 熱門標的選擇 (並嘗試預設為台積電)
+    hot_options = CATEGORY_HOT_OPTIONS.get(category_selection, {})
+    option_list = list(hot_options.keys())
 
-# 嘗試找到「台積電」在 option_list 的 index（或包含 '2330'）
-found_idx = None
-for i, key in enumerate(option_list):
-    key_lower = str(key)
-    if '台積電' in key_lower or '2330' in key_lower:
-        found_idx = i
-        break
+    # 嘗試找到「台積電」在 option_list 的 index（或包含 '2330'）
+    found_idx = None
+    for i, key in enumerate(option_list):
+        key_lower = str(key)
+        if '台積電' in key_lower or '2330' in key_lower:
+            found_idx = i
+            break
 
-# selectbox 的 list 包含一個空選項在最前面，所以 index 需要 +1
-default_index = (found_idx + 1) if found_idx is not None else 0
+    # selectbox 的 list 包含一個空選項在最前面，所以 index 需要 +1
+    default_index = (found_idx + 1) if found_idx is not None else 0
 
-selected_option = st.sidebar.selectbox(
-    "或從熱門清單選擇:",
-    [""] + option_list,
-    index=default_index
-)
+    selected_option = st.sidebar.selectbox(
+        "或從熱門清單選擇:",
+        [""] + option_list,
+        index=default_index
+    )
 
     # 3. 自行輸入
     default_symbol = hot_options[selected_option] if selected_option else st.session_state.get('last_input', "")
@@ -1095,56 +1094,38 @@ except Exception:
             ["📊 技術指標 AI 解讀", "📜 基本面/籌碼評級", "💡 AI 判斷意見"]
         )
 
-  with tab_tech_table:
+        with tab_tech_table:
             st.subheader("技術指標狀態與 AI 解讀")
             tech_df = get_technical_data_df(df)
             
             if not tech_df.empty:
                 # 數值格式化
-                tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+                tech_df['最新值'] = tech_df['最新值'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) and isinstance(x, (int, float)) else (str(x) if pd.notna(x) else "N/A"))
                 
-                # --- 新增/調整顏色映射，用於HTML背景色 ---
-                # 定義 AI 結論顏色與對應的輕量背景色
+                # --- 顏色映射 (背景) 與 HTML table ---
                 BG_COLOR_MAP = {
-                    "red": "rgba(250, 128, 114, 0.15)",  # Light salmon with opacity
-                    "green": "rgba(107, 226, 121, 0.15)", # Light green with opacity
-                    "orange": "rgba(255, 215, 0, 0.15)", # Light gold with opacity
-                    "blue": "rgba(173, 216, 230, 0.15)", # Light blue with opacity
+                    "red": "rgba(250, 128, 114, 0.10)",
+                    "green": "rgba(107, 226, 121, 0.10)",
+                    "orange": "rgba(255, 215, 0, 0.10)",
+                    "blue": "rgba(173, 216, 230, 0.10)",
                     "grey": "rgba(169, 169, 169, 0.05)",
                 }
-                # --- 顏色映射結束 ---
-                
-                # 準備顯示數據 (包含顏色鍵)
-                display_data = tech_df[['指標名稱', '最新值', '分析結論', '顏色']].reset_index(drop=True)
-                
-                # 使用 HTML 渲染，以便套用背景色
-                html_table = f"""
-                <table style='width:100%; border-collapse: collapse; font-size: 14px;'>
-                    <tr style='background-color: #f0f0f0;'>
-                        <th style='padding: 10px; border: 1px solid #ddd; text-align: left; width: 30%;'>指標名稱</th>
-                        <th style='padding: 10px; border: 1px solid #ddd; text-align: right; width: 20%;'>最新值</th>
-                        <th style='padding: 10px; border: 1px solid #ddd; text-align: left; width: 50%;'>分析結論</th>
-                    </tr>
-                """
-html = "<table style='width:100%; border-collapse: collapse;'>"
-html += "<thead><tr style='text-align:left;'><th style='padding:6px; border:1px solid #ddd;'>指標名稱</th><th style='padding:6px; border:1px solid #ddd; text-align:right;'>最新值</th><th style='padding:6px; border:1px solid #ddd;'>分析結論</th></tr></thead><tbody>"
 
-for idx, row in tech_df.iterrows():
-    name = idx
-    val = row['最新值']
-    # 數字格式化
-    val_str = f"{val:,.2f}" if pd.notna(val) else "N/A"
-    concl_html = row['分析結論']  # 這裡已包含 <span>...<strong>...</strong></span>
-    html += (
-        "<tr>"
-        f"<td style='padding: 8px; border: 1px solid #ddd;'>{name}</td>"
-        f"<td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{val_str}</td>"
-        f"<td style='padding: 8px; border: 1px solid #ddd;'>{concl_html}</td>"
-        "</tr>"
-    )
+                html = "<table style='width:100%; border-collapse: collapse; font-size:14px;'>"
+                html += "<thead><tr style='background-color:#f7f7f7;'><th style='padding:10px; border:1px solid #ddd; text-align:left; width:30%'>指標名稱</th><th style='padding:10px; border:1px solid #ddd; text-align:right; width:20%'>最新值</th><th style='padding:10px; border:1px solid #ddd; text-align:left; width:50%'>分析結論</th></tr></thead><tbody>"
 
-html += "</tbody></table>"
-st.markdown(html, unsafe_allow_html=True)
+                for idx, row in tech_df.iterrows():
+                    name = idx if isinstance(idx, str) else str(idx)
+                    val_str = row['最新值']
+                    concl_html = row['分析結論']  # get_technical_data_df 已回傳含 <span> 的 HTML
+                    color_key = row.get('顏色', 'grey')
+                    bg = BG_COLOR_MAP.get(color_key, BG_COLOR_MAP['grey'])
+                    html += f"<tr style='background:{bg};'><td style='padding:8px; border:1px solid #ddd;'>{name}</td>"
+                    html += f"<td style='padding:8px; border:1px solid #ddd; text-align:right;'>{val_str}</td>"
+                    html += f"<td style='padding:8px; border:1px solid #ddd;'>{concl_html}</td></tr>"
+
+                html += "</tbody></table>"
+                st.markdown(html, unsafe_allow_html=True)
             else:
                 st.info("數據不足，無法生成技術指標解讀。")
 
@@ -1238,6 +1219,7 @@ if __name__ == '__main__':
     st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
     st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
     st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
 
 
 
