@@ -810,7 +810,7 @@ def main():
                         is_long_term=is_long_term,
                         currency_symbol=currency_symbol 
                     )
-                    backtest_results = run_backtest(df_raw.copy())
+                    backtest_results = run_backtest(df_tech.copy())
                     
                     # === 結果呈現區塊 ===
                     st.header(f"📈 **{company_info['name']}** ({final_symbol_to_analyze}) AI趨勢分析")
