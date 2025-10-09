@@ -537,13 +537,12 @@ def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
 def get_technical_data_df(df):
     """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
     
-    # 重新定義 COLOR_MAP
     COLOR_MAP = {
-        "red": "#FA8072",      # 強勢多頭/潛在買點 (淡紅色)
-        "green": "#6BE279",    # 強勢空頭/潛在賣點 (淡綠色)
-        "orange": "#FFD700",   # 中性/動能增強 (金色)
-        "blue": "#ADD8E6",     # 盤整/正常 (淡藍色)
-        "grey": "#A9A9A9",     # 預設
+        "red": "#FA8072", 
+        "green": "#6BE279",
+        "orange": "#FFD700",
+        "blue": "#ADD8E6",
+        "grey": "#A9A9A9",
     }
     
     if df.empty or len(df) < 200: return pd.DataFrame()
@@ -640,8 +639,7 @@ def get_technical_data_df(df):
                 conclusion, color_key = f"中性：在上下軌間 ({bb_width_pct:.2f}% 寬度)", "blue"
 
         # 應用顏色樣式到結論文本
-        colored_conclusion = f"<span style='color: {COLOR_MAP.get(color_key, COLOR_MAP['grey'])}; font-weight: bold;'>{conclusion}</span>"
-        
+        colored_conclusion = f"<span style='color: {COLOR_MAP.get(color_key, COLOR_MAP['grey'])}; font-weight: bold;'><strong>{conclusion}</strong></span>"
         # 將指標名稱、原始值、帶有顏色的結論文本、以及用於背景色的 'color_key' 存入
         data.append([name, value, colored_conclusion, color_key])
 
@@ -1115,22 +1113,25 @@ except Exception:
                         <th style='padding: 10px; border: 1px solid #ddd; text-align: left; width: 50%;'>分析結論</th>
                     </tr>
                 """
-                for index, row in display_data.iterrows():
-                    # 獲取顏色鍵並映射到背景色
-                    color_key = row['顏色']
-                    bg_color = BG_COLOR_MAP.get(color_key, BG_COLOR_MAP['grey'])
-                    
-                    # 將背景色應用到結論單元格，並加粗數值單元格
-                    html_table += f"""
-                    <tr>
-                        <td style='padding: 8px; border: 1px solid #ddd;'>{row['指標名稱']}</td>
-                        <td style='padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;'>{row['最新值']}</td>
-                        <td style='padding: 8px; border: 1px solid #ddd; background-color: {bg_color};'>{row['分析結論']}</td>
-                    </tr>
-                    """
-                html_table += "</table>"
-                
-                st.markdown(html_table, unsafe_allow_html=True)
+html = "<table style='width:100%; border-collapse: collapse;'>"
+html += "<thead><tr style='text-align:left;'><th style='padding:6px; border:1px solid #ddd;'>指標名稱</th><th style='padding:6px; border:1px solid #ddd; text-align:right;'>最新值</th><th style='padding:6px; border:1px solid #ddd;'>分析結論</th></tr></thead><tbody>"
+
+for idx, row in tech_df.iterrows():
+    name = idx
+    val = row['最新值']
+    # 數字格式化
+    val_str = f"{val:,.2f}" if pd.notna(val) else "N/A"
+    concl_html = row['分析結論']  # 這裡已包含 <span>...<strong>...</strong></span>
+    html += (
+        "<tr>"
+        f"<td style='padding: 8px; border: 1px solid #ddd;'>{name}</td>"
+        f"<td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{val_str}</td>"
+        f"<td style='padding: 8px; border: 1px solid #ddd;'>{concl_html}</td>"
+        "</tr>"
+    )
+
+html += "</tbody></table>"
+st.markdown(html, unsafe_allow_html=True)
             else:
                 st.info("數據不足，無法生成技術指標解讀。")
 
@@ -1224,4 +1225,5 @@ if __name__ == '__main__':
     st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
     st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
     st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
 
