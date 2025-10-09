@@ -17,8 +17,8 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析📈", 
-    page_icon="🚀", 
+    page_title="AI趨勢分析", 
+    page_icon="📈", 
     layout="wide"
 )
 
@@ -190,7 +190,7 @@ def get_company_info(symbol):
     except:
         return {"name": symbol, "category": "未分類", "currency": "USD"}
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def get_currency_symbol(symbol):
     """ 根據代碼獲取貨幣符號 """
     currency_code = get_company_info(symbol).get('currency', 'USD')
@@ -625,6 +625,7 @@ def get_technical_data_df(df):
     technical_df = pd.DataFrame(data, columns=['指標名稱', '最新值', '分析結論', '顏色'])
     technical_df = technical_df.set_index('指標名稱')
     return technical_df
+
 # ==============================================================================
 # 6. 回測與繪圖邏輯 (Backtest & Plotting)
 # ==============================================================================
@@ -633,7 +634,7 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     """ 
     執行基於 SMA 20 / EMA 50 交叉的簡單回測。
     策略: 黃金交叉買入 (做多)，死亡交叉清倉 (賣出)。
-    【已更新回測結果計算邏輯】
+    【已更新回測結果計算邏輯，並新增回傳 trades 列表】
     """
     if df.empty or len(df) < 51: 
         return {"total_return": 0, "win_rate": 0, "max_drawdown": 0, "total_trades": 0, "message": "數據不足 (少於 51 週期) 或計算錯誤。"}
@@ -659,11 +660,12 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     if data.empty: 
         return {"total_return": 0, "win_rate": 0, "max_drawdown": 0, "total_trades": 0, "message": "指標計算後數據不足。"}
 
-    # --- 模擬交易邏輯 (原樣保留) ---
+    # --- 模擬交易邏輯 ---
     capital = [initial_capital]
     position = 0
     buy_price = 0
-    trades = []
+    buy_date = None # 新增：記錄買入日期
+    trades = [] # 儲存交易細節
     current_capital = initial_capital
     
     for i in range(1, len(data)):
@@ -671,44 +673,63 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
 
         # 1. Buy Signal
         if data['Signal'].iloc[i] == 1 and position == 0:
-            position = 1
+            position = current_capital / current_close # 買入能買的股數 (簡化為按淨值計算)
             buy_price = current_close
+            buy_date = data.index[i].strftime('%Y-%m-%d %H:%M') # 記錄買入日期
             current_capital -= current_capital * commission_rate
 
         # 2. Sell Signal (Exit Trade)
-        elif data['Signal'].iloc[i] == -1 and position == 1:
+        elif data['Signal'].iloc[i] == -1 and position > 0:
             sell_price = current_close
-            profit = (sell_price - buy_price) / buy_price
+            
+            # 計算該筆交易的盈虧
+            entry_value = position * buy_price
+            exit_value = position * sell_price
+            profit = (exit_value - entry_value)
+            profit_pct = (exit_value - entry_value) / entry_value if entry_value > 0 else 0
+            
+            current_capital += profit
+            current_capital -= current_capital * commission_rate
             
             trades.append({ 
-                'entry_date': data.index[i], 
-                'exit_date': data.index[i], 
-                'profit_pct': profit, 
-                'is_win': profit > 0 
+                'Entry_Date': buy_date, 
+                'Exit_Date': data.index[i].strftime('%Y-%m-%d %H:%M'), 
+                'Entry_Price': buy_price,
+                'Exit_Price': sell_price,
+                'Profit_Pct': profit_pct, 
+                'Is_Win': profit > 0 
             })
-            current_capital *= (1 + profit)
-            current_capital -= current_capital * commission_rate
             position = 0
+            buy_date = None
             
         current_value = current_capital
-        if position == 1:
-            current_value = current_capital * (current_close / buy_price)
+        if position > 0:
+            # 持倉時，淨值 = 現有資金 + 持倉股票市值
+            current_value = current_capital + (position * current_close) - (position * buy_price)
             
         capital.append(current_value)
 
     # 3. Handle open position (清倉) - 確保最終資金曲線反映實際淨值
-    if position == 1:
+    if position > 0:
         sell_price = data['Close'].iloc[-1]
-        profit = (sell_price - buy_price) / buy_price
         
-        trades.append({ 
-            'entry_date': data.index[-1], 
-            'exit_date': data.index[-1], 
-            'profit_pct': profit, 
-            'is_win': profit > 0 
-        })
-        current_capital *= (1 + profit)
+        entry_value = position * buy_price
+        exit_value = position * sell_price
+        profit = (exit_value - entry_value)
+        profit_pct = (exit_value - entry_value) / entry_value if entry_value > 0 else 0
+            
+        current_capital += profit
         current_capital -= current_capital * commission_rate
+        
+        # 修正：確保未平倉交易的記錄使用正確的買入日期
+        trades.append({ 
+            'Entry_Date': buy_date, 
+            'Exit_Date': data.index[-1].strftime('%Y-%m-%d %H:%M'), 
+            'Entry_Price': buy_price,
+            'Exit_Price': sell_price,
+            'Profit_Pct': profit_pct, 
+            'Is_Win': profit > 0 
+        })
         
         # 將最終清倉後的淨值更新到 capital 列表的最後一個元素
         if capital:
@@ -721,7 +742,7 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     # --- 應用使用者要求的計算邏輯，並使用 current_capital 計算總報酬 ---
     total_return = ((current_capital - initial_capital) / initial_capital) * 100
     total_trades = len(trades)
-    win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
+    win_rate = (sum(1 for t in trades if t['Is_Win']) / total_trades) * 100 if total_trades > 0 else 0
     
     # 最大回撤計算
     max_value = capital_series.expanding(min_periods=1).max()
@@ -734,15 +755,37 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
         "max_drawdown": round(max_drawdown, 2),
         "total_trades": total_trades,
         "message": f"回測區間 {data.index[0].strftime('%Y-%m-%d')} 到 {data.index[-1].strftime('%Y-%m-%d')}。",
-        "capital_curve": capital_series
+        "capital_curve": capital_series,
+        "trades_list": trades # <<< 新增回傳交易列表
     }
 
 def plot_chart(df, symbol_name, period_name, sl_tp_levels, backtest_curve):
     """
     K線、技術指標與交易目標繪圖
+    【已修正: 增加 df.empty 檢查來避免 Key Error】
     """
     
-    # 確保 DF 包含所有核心指標欄位
+    # --- 修正: 新增 df.empty 檢查，以應對僅繪製資金曲線的呼叫 (tab_summary) ---
+    if df.empty:
+        # 如果 df 是空的 (例如在 tab_summary 中呼叫)，只繪製資金曲線 (如果提供 backtest_curve)
+        if backtest_curve is not None and not backtest_curve.empty:
+            st.subheader("💰 回測資金曲線")
+            fig_curve = go.Figure()
+            fig_curve.add_trace(go.Scatter(x=backtest_curve.index, y=backtest_curve.values, mode='lines', name='資金淨值曲線', line=dict(color='green', width=2)))
+            fig_curve.update_layout(
+                title='SMA 20 / EMA 50 交叉策略資金淨值變化',
+                yaxis_title='淨值',
+                height=300
+            )
+            st.plotly_chart(fig_curve, use_container_width=True)
+        # 返回空圖，避免主 K 線圖邏輯被執行
+        return go.Figure()
+    
+    # ---------------------------------------------------------------------------------------------------
+    # K線、指標繪圖邏輯 (只有在 df 不為空時才執行)
+    # ---------------------------------------------------------------------------------------------------
+
+    # 確保 DF 包含所有核心指標欄位 (現在有保護，不會在 df.empty 時執行)
     df = df.dropna(subset=['SMA_20', 'EMA_50', 'BB_High', 'BB_Low', 'MACD', 'RSI']) 
 
     # 創建主圖 (K線/MA/BB) 和三個子圖 (MACD, RSI, Volume)
@@ -813,17 +856,7 @@ def plot_chart(df, symbol_name, period_name, sl_tp_levels, backtest_curve):
     fig.update_yaxes(title_text='RSI', range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text='量能', row=4, col=1)
     
-    # 資金曲線獨立繪製（不嵌入 K 線圖中）
-    if backtest_curve is not None and not backtest_curve.empty:
-        st.subheader("💰 回測資金曲線")
-        fig_curve = go.Figure()
-        fig_curve.add_trace(go.Scatter(x=backtest_curve.index, y=backtest_curve.values, mode='lines', name='資金淨值曲線', line=dict(color='green', width=2)))
-        fig_curve.update_layout(
-            title='SMA 20 / EMA 50 交叉策略資金淨值變化',
-            yaxis_title='淨值',
-            height=300
-        )
-        st.plotly_chart(fig_curve, use_container_width=True)
+    # 資金曲線獨立繪製（原程式碼中的此區塊已移除，邏輯移至最上方 df.empty 判斷中）
         
     return fig
 
@@ -927,6 +960,7 @@ def main():
             ai_signal = generate_ai_fusion_signal(df, ai_rating, {'inst_hold_pct': 0})
             st.session_state.ai_signal = ai_signal
             currency = get_currency_symbol(symbol)
+            # 呼叫回測並獲取完整的 trades_list
             backtest_results = run_backtest(df.copy())
             st.session_state.backtest_results = backtest_results
 
@@ -1012,23 +1046,49 @@ def main():
         # 5. 策略回測報告
         st.header("5️⃣ 策略回測報告 (SMA 20 / EMA 50 交叉)")
         
-        if backtest_results['total_trades'] > 0:
-            st.success(f"回測週期內總報酬率: **{backtest_results['total_return']:,.2f}%**", icon="📈")
-            col_b1, col_b2, col_b3 = st.columns(3)
-            col_b1.metric("交易次數", backtest_results['total_trades'])
-            col_b2.metric("勝率", f"{backtest_results['win_rate']:,.2f}%")
-            col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
-            st.caption(backtest_results['message'])
-            # 資金曲線圖 (在 plot_chart 內獨立呼叫)
-            plot_chart(pd.DataFrame(), "", "", {}, st.session_state.backtest_results.get('capital_curve'))
-        else:
-            st.warning(backtest_results['message'])
+        tab_summary, tab_trades = st.tabs(["📈 回測概要與曲線", "📜 交易細節列表"]) 
+        
+        with tab_summary:
+            if backtest_results['total_trades'] > 0:
+                st.success(f"回測週期內總報酬率: **{backtest_results['total_return']:,.2f}%**", icon="📈")
+                col_b1, col_b2, col_b3 = st.columns(3)
+                col_b1.metric("交易次數", backtest_results['total_trades'])
+                col_b2.metric("勝率", f"{backtest_results['win_rate']:,.2f}%")
+                col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
+                st.caption(backtest_results['message'])
+                
+                # FIX: 這裡呼叫 plot_chart 只為了繪製資金曲線。
+                # plot_chart 內部的新增邏輯會處理 df.empty 時的資金曲線繪製。
+                plot_chart(pd.DataFrame(), "", "", {}, st.session_state.backtest_results.get('capital_curve'))
+            else:
+                st.warning(backtest_results['message'])
+                
+        with tab_trades: # 顯示交易細節列表
+            st.subheader("完整交易紀錄 (Entry/Exit Price)")
+            trades_df = pd.DataFrame(backtest_results.get('trades_list', []))
+            if not trades_df.empty:
+                # 格式化顯示
+                trades_df['Profit_Pct'] = (trades_df['Profit_Pct'] * 100).apply(lambda x: f"{x:+.2f}%")
+                trades_df['Entry_Price'] = trades_df['Entry_Price'].apply(lambda x: f"{x:,.2f}")
+                trades_df['Exit_Price'] = trades_df['Exit_Price'].apply(lambda x: f"{x:,.2f}")
+                trades_df['Is_Win'] = trades_df['Is_Win'].apply(lambda x: '✅ 獲利' if x else '❌ 虧損')
+                trades_df = trades_df.rename(columns={
+                    'Entry_Date': '進場時間', 'Exit_Date': '出場時間', 
+                    'Entry_Price': '進場價格', 'Exit_Price': '出場價格', 
+                    'Profit_Pct': '單筆回報', 'Is_Win': '結果'
+                })
+                
+                # 反轉順序，讓最新的交易顯示在最上面
+                st.dataframe(trades_df.iloc[::-1], use_container_width=True)
+            else:
+                st.info("回測週期內無交易發生。")
         
         st.markdown("---")
 
         # 6. 完整技術分析圖表 (放在最後)
         st.header("6️⃣ 完整技術分析圖表")
-        plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, None) # 資金曲線獨立繪製，這裡傳 None
+        # 這裡傳入完整的 df，backtest_curve=None (避免重複繪製)
+        plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, None) 
         st.plotly_chart(plot_fig, use_container_width=True)
 
     else:
@@ -1037,4 +1097,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
