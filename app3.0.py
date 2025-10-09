@@ -243,9 +243,6 @@ for category, codes in CATEGORY_MAP.items():
             options[f"{code} - {info['name']}"] = code
     CATEGORY_HOT_OPTIONS[category] = options
 
-# =====================================================================
-# 2. 核心數據與分析輔助函式
-# =====================================================================
 def get_symbol_from_query(query: str) -> str:
     query = query.strip()
     query_upper = query.upper()
@@ -306,9 +303,6 @@ def get_currency_symbol(symbol):
     currency_code = get_company_info(symbol).get('currency', 'USD')
     return 'NT$' if currency_code == 'TWD' else '$' if currency_code == 'USD' else currency_code + ' '
 
-# =====================================================================
-# 3. 趨勢判斷與止盈止損策略 (融合所有版本)
-# =====================================================================
 def support_resistance(df, lookback=60):
     df['Support'] = df['Low'].rolling(window=lookback).min() * 0.98
     df['Resistance'] = df['High'].rolling(window=lookback).max() * 1.02
@@ -452,9 +446,6 @@ def calculate_all_indicators(df):
     df['Ichimoku_B'] = ichimoku.ichimoku_b()
     return df
 
-# =====================================================================
-# 4. UI 主流程 (融合所有版本)
-# =====================================================================
 def main():
     st.sidebar.markdown("<span style='color: #FA8072; font-weight: bold;'>🚀 AI 趨勢分析</span>", unsafe_allow_html=True)
     st.sidebar.markdown("---")
@@ -483,21 +474,33 @@ def main():
             else:
                 info = get_company_info(symbol)
                 df_tech = calculate_all_indicators(df_raw.copy())
-                price = df_raw['Close'].iloc[-1]
+                # 修正：確保 price, prev_close 為 float 並安全格式化
+                try:
+                    price = float(df_raw['Close'].iloc[-1])
+                except Exception:
+                    price = np.nan
+                try:
+                    prev_close = float(df_raw['Close'].iloc[-2]) if len(df_raw) > 1 else price
+                except Exception:
+                    prev_close = np.nan
+                change = price - prev_close if pd.notna(price) and pd.notna(prev_close) else np.nan
+                pct = (price - prev_close) / prev_close * 100 if pd.notna(price) and pd.notna(prev_close) and prev_close != 0 else np.nan
                 consensus_sl, consensus_tp, all_strategy_results = get_consensus_levels(df_tech, price)
                 currency_symbol = get_currency_symbol(symbol)
-                pf = ".4f" if price < 100 and currency_symbol != 'NT$' else ".2f"
-                prev_close = df_raw['Close'].iloc[-2] if len(df_raw) > 1 else price
-                change, pct = price - prev_close, (price - prev_close) / prev_close * 100 if prev_close != 0 else 0
+                pf = 4 if pd.notna(price) and price < 100 and currency_symbol != 'NT$' else 2
 
                 st.header(f"📈 {info['name']} ({symbol}) AI趨勢分析報告")
                 st.markdown(f"**分析週期:** {period_key}")
                 st.markdown("---")
                 st.subheader("💡 價格資訊")
                 c1, c2, c3 = st.columns(3)
-                c1.metric("💰 當前價格", f"{currency_symbol}{price:{pf}}", f"{change:+.{pf}} ({pct:+.2f}%)")
-                c2.metric("🚀 共識止盈 (TP)", f"{currency_symbol}{consensus_tp:{pf}}" if pd.notna(consensus_tp) else "N/A")
-                c3.metric("🛑 共識止損 (SL)", f"{currency_symbol}{consensus_sl:{pf}}" if pd.notna(consensus_sl) else "N/A")
+                c1.metric(
+                    "💰 當前價格",
+                    f"{currency_symbol}{price:.{pf}f}" if pd.notna(price) else "N/A",
+                    f"{change:+.{pf}f} ({pct:+.2f}%)" if pd.notna(change) and pd.notna(pct) else "N/A"
+                )
+                c2.metric("🚀 共識止盈 (TP)", f"{currency_symbol}{consensus_tp:.{pf}f}" if pd.notna(consensus_tp) else "N/A")
+                c3.metric("🛑 共識止損 (SL)", f"{currency_symbol}{consensus_sl:.{pf}f}" if pd.notna(consensus_sl) else "N/A")
                 with st.expander("各策略計算結果"):
                     results_df = pd.DataFrame.from_dict(all_strategy_results, orient='index').reset_index()
                     results_df.columns = ['策略名稱', '止損價 (SL)', '止盈價 (TP)']
