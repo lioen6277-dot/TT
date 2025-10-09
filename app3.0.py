@@ -11,24 +11,24 @@ from plotly.subplots import make_subplots
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# 1. 頁面配置與全局設定
+# 1. 頁面配置與全局設定 (採用最完整的資產清單)
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析📈 (Expert)",
+    page_title="AI趨勢分析📈 (Final)",
     page_icon="🚀",
     layout="wide"
 )
 
 # 週期映射
-PERIOD_MAP = { 
-    "30 分": ("60d", "30m"), 
-    "4 小時": ("1y", "60m"), 
-    "1 日": ("5y", "1d"), 
+PERIOD_MAP = {
+    "30 分": ("60d", "30m"),
+    "4 小時": ("1y", "60m"),
+    "1 日": ("5y", "1d"),
     "1 週": ("max", "1wk")
 }
 
-# 🚀 您的【所有資產清單】
+# 🚀 您的【所有資產清單】(整合所有版本)
 FULL_SYMBOLS_MAP = {
     # 美股/ETF/指數
     "ACN": {"name": "Accenture (埃森哲)", "keywords": ["Accenture", "ACN", "諮詢", "科技服務"]},
@@ -286,12 +286,9 @@ def get_stock_data(symbol, period, interval):
 def get_company_info(symbol):
     info = FULL_SYMBOLS_MAP.get(symbol, {})
     if info:
-        if symbol.endswith(".TW") or symbol.startswith("^TWII"):
-            category, currency = "台股 (TW)", "TWD"
-        elif symbol.endswith("-USD"):
-            category, currency = "加密貨幣 (Crypto)", "USD"
-        else:
-            category, currency = "美股 (US)", "USD"
+        if symbol.endswith(".TW") or symbol.startswith("^TWII"): category, currency = "台股 (TW)", "TWD"
+        elif symbol.endswith("-USD"): category, currency = "加密貨幣 (Crypto)", "USD"
+        else: category, currency = "美股 (US)", "USD"
         return {"name": info['name'], "category": category, "currency": currency}
     try:
         ticker = yf.Ticker(symbol)
@@ -299,6 +296,7 @@ def get_company_info(symbol):
         name = yf_info.get('longName') or yf_info.get('shortName') or symbol
         currency = yf_info.get('currency') or "USD"
         quote_type = yf_info.get('quoteType', '')
+        
         if quote_type == 'CRYPTOCURRENCY': category = "加密貨幣 (Crypto)"
         elif quote_type == 'INDEX': category = "指數"
         elif symbol.endswith(".TW"): category = "台股 (TW)"
@@ -312,160 +310,157 @@ def get_currency_symbol(symbol):
     currency_code = get_company_info(symbol).get('currency', 'USD')
     return 'NT$' if currency_code == 'TWD' else '$' if currency_code == 'USD' else currency_code + ' '
 
-# =======================================================================
-# 3. 趨勢判斷與止盈止損策略函式集（加強版）
-# =======================================================================
-
+# ==============================================================================
+# 3. 專業級 TP/SL 策略函式 (整合並重構自原則2.0)
+# ==============================================================================
 def support_resistance(df, lookback=60):
-    df['Support'] = df['Low'].rolling(window=lookback).min() * 0.98
-    df['Resistance'] = df['High'].rolling(window=lookback).max() * 1.02
-    df['Volume_Filter'] = df['Volume'] > df['Volume'].rolling(50).mean() * 1.3
-    df['SL'] = df['Support'].where(df['Volume_Filter'], df['Close'])
-    df['TP'] = df['Resistance'].where(df['Volume_Filter'], df['Close'])
+    df['SL_base'] = df['Low'].rolling(window=lookback).min() * 0.98
+    df['TP_base'] = df['High'].rolling(window=lookback).max() * 1.02
+    volume_filter = df['Volume'] > df['Volume'].rolling(50).mean() * 1.3
+    df['SL'] = np.where(volume_filter, df['SL_base'], np.nan)
+    df['TP'] = np.where(volume_filter, df['TP_base'], np.nan)
     return df
 
-def bollinger_bands(df, period=50, dev=2.5):
-    df['SMA'] = df['Close'].rolling(window=period).mean()
+def bollinger_bands_strategy(df, period=50, dev=2.5):
+    df['SMA'] = ta.trend.sma_indicator(df['Close'], window=period)
     df['STD'] = df['Close'].rolling(window=period).std()
     df['Upper'] = df['SMA'] + (df['STD'] * dev)
     df['Lower'] = df['SMA'] - (df['STD'] * dev)
-    df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-    df['Volume_Filter'] = df['Volume'] > df['Volume'].rolling(50).mean() * 1.2
-    df['SL'] = df['Lower'].where((df['RSI'] < 30) & df['Volume_Filter'], df['Close'])
-    df['TP'] = df['Upper'].where((df['RSI'] > 70) & df['Volume_Filter'], df['Close'])
+    rsi_filter = df['RSI_14'] < 30
+    volume_filter = df['Volume'] > df['Volume'].rolling(50).mean() * 1.2
+    df['SL'] = np.where(rsi_filter & volume_filter, df['Lower'], np.nan)
+    df['TP'] = np.where(df['RSI_14'] > 70, df['Upper'], np.nan)
     return df
 
 def atr_stop(df, period=21, multiplier_sl=2.5, multiplier_tp=5):
-    df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=period)
-    df['ADX'] = ta.trend.adx(df['High'], df['Low'], df['Close'], window=14)
-    df['SL'] = df['Close'] - (df['ATR'] * multiplier_sl)
-    df['TP'] = df['Close'] + (df['ATR'] * multiplier_tp)
-    df['Trend_Filter'] = df['ADX'] > 25
-    df['SL'] = df['SL'].where(df['Trend_Filter'], df['Close'])
-    df['TP'] = df['TP'].where(df['Trend_Filter'], df['Close'])
+    trend_filter = df['ADX_14'] > 25
+    df['SL'] = np.where(trend_filter, df['Close'] - (df['ATR_14'] * multiplier_sl), np.nan)
+    df['TP'] = np.where(trend_filter, df['Close'] + (df['ATR_14'] * multiplier_tp), np.nan)
     return df
 
 def donchian_channel(df, period=50):
     df['Upper'] = df['High'].rolling(window=period).max()
     df['Lower'] = df['Low'].rolling(window=period).min()
-    macd = ta.trend.macd(df['Close'])
-    df['MACD'] = macd
-    df['Volume_Filter'] = df['Volume'] > df['Volume'].rolling(50).mean() * 1.3
-    df['SL'] = df['Lower'].where((df['MACD'] < 0) & df['Volume_Filter'], df['Close'])
-    df['TP'] = df['Upper'].where((df['MACD'] > 0) & df['Volume_Filter'], df['Close'])
+    macd_filter = df['MACD_Line'] < 0
+    volume_filter = df['Volume'] > df['Volume'].rolling(50).mean() * 1.3
+    df['SL'] = np.where(macd_filter & volume_filter, df['Lower'], np.nan)
+    df['TP'] = np.where(df['MACD_Line'] > 0, df['Upper'], np.nan)
     return df
 
 def keltner_channel(df, period=30, atr_multiplier=2.5):
-    ema = ta.trend.ema_indicator(df['Close'], window=period)
-    atr = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
-    df['Upper'] = ema + (atr * atr_multiplier)
-    df['Lower'] = ema - (atr * atr_multiplier)
-    df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-    obv = ta.volume.on_balance_volume(df['Close'], df['Volume'])
-    df['OBV_Filter'] = obv > obv.shift(1)
-    df['SL'] = df['Lower'].where((df['RSI'] < 30) & df['OBV_Filter'], df['Close'])
-    df['TP'] = df['Upper'].where((df['RSI'] > 70) & df['OBV_Filter'], df['Close'])
+    df['EMA_30'] = ta.trend.ema_indicator(df['Close'], window=period)
+    df['Upper'] = df['EMA_30'] + (df['ATR_14'] * atr_multiplier)
+    df['Lower'] = df['EMA_30'] - (df['ATR_14'] * atr_multiplier)
+    obv_filter = df['OBV'] > df['OBV'].shift(1)
+    df['SL'] = np.where((df['RSI_14'] < 30) & obv_filter, df['Lower'], np.nan)
+    df['TP'] = np.where((df['RSI_14'] > 70) & obv_filter, df['Upper'], np.nan)
     return df
 
 def ichimoku_cloud(df):
-    adx = ta.trend.adx(df['High'], df['Low'], df['Close'], window=14)
+    trend_filter = df['ADX_14'] > 25
     volume_filter = df['Volume'] > df['Volume'].rolling(20).mean() * 1.2
-    ichimoku = ta.trend.IchimokuIndicator(df['High'], df['Low'], window1=9, window2=26, window3=52)
-    df['Senkou_A'] = ichimoku.ichimoku_a()
-    df['Senkou_B'] = ichimoku.ichimoku_b()
-    df['SL'] = df['Senkou_B'].where((df['Close'] < df['Senkou_B']) & (adx > 25) & volume_filter, df['Close'])
-    df['TP'] = df['Senkou_A'].where((df['Close'] > df['Senkou_A']) & (adx > 25) & volume_filter, df['Close'])
+    df['SL'] = np.where((df['Close'] < df['Ichimoku_B']) & trend_filter & volume_filter, df['Ichimoku_B'], np.nan)
+    df['TP'] = np.where((df['Close'] > df['Ichimoku_A']) & trend_filter & volume_filter, df['Ichimoku_A'], np.nan)
     return df
 
 def ma_crossover(df, fast=20, slow=50):
-    fast_ema = ta.trend.ema_indicator(df['Close'], window=fast)
-    slow_ema = ta.trend.ema_indicator(df['Close'], window=slow)
-    macd = ta.trend.macd(df['Close'])
-    obv = ta.volume.on_balance_volume(df['Close'], df['Volume'])
-    obv_filter = obv > obv.shift(1)
-    df['SL'] = slow_ema.where((fast_ema < slow_ema) & (macd < 0) & obv_filter, df['Close'])
-    df['TP'] = fast_ema.where((fast_ema > slow_ema) & (macd > 0) & obv_filter, df['Close'])
+    df['Fast_EMA'] = ta.trend.ema_indicator(df['Close'], window=fast)
+    df['Slow_EMA'] = ta.trend.ema_indicator(df['Close'], window=slow)
+    obv_filter = df['OBV'] > df['OBV'].shift(1)
+    df['SL'] = np.where((df['Fast_EMA'] < df['Slow_EMA']) & (df['MACD_Line'] < 0) & obv_filter, df['Slow_EMA'], np.nan)
+    df['TP'] = np.where((df['Fast_EMA'] > df['Slow_EMA']) & (df['MACD_Line'] > 0) & obv_filter, df['Fast_EMA'], np.nan)
+    return df
+    
+def vwap_strategy(df):
+    # Ensure VWAP exists before using it
+    if 'VWAP' not in df.columns:
+        df['VWAP'] = ta.volume.volume_weighted_average_price(df['High'], df['Low'], df['Close'], df['Volume'])
+    volume_filter = df['Volume'] > df['Volume'].rolling(20).mean() * 1.2
+    df['SL'] = np.where((df['Close'] < df['VWAP']) & (df['RSI_14'] < 30) & volume_filter, df['VWAP'], np.nan)
+    df['TP'] = np.where((df['Close'] > df['VWAP']) & (df['RSI_14'] > 70) & volume_filter, df['VWAP'], np.nan)
     return df
 
-def vwap(df):
-    df['VWAP'] = ta.volume.volume_weighted_average_price(df['High'], df['Low'], df['Close'], df['Volume'])
-    df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
+def parabolic_sar_strategy(df):
+    df['SAR_up'] = ta.trend.psar_up(df['High'], df['Low'], df['Close'])
+    df['SAR_down'] = ta.trend.psar_down(df['High'], df['Low'], df['Close'])
+    df['SAR'] = np.where(df['Close'] > df['SAR_up'].shift(1), df['SAR_up'], df['SAR_down'])
     volume_filter = df['Volume'] > df['Volume'].rolling(20).mean() * 1.2
-    df['SL'] = df['VWAP'].where((df['Close'] < df['VWAP']) & (df['RSI'] < 30) & volume_filter, df['Close'])
-    df['TP'] = df['VWAP'].where((df['Close'] > df['VWAP']) & (df['RSI'] > 70) & volume_filter, df['Close'])
-    return df
-
-def parabolic_sar(df):
-    sar = ta.trend.psar_down(df['High'], df['Low'], df['Close'])
-    df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-    volume_filter = df['Volume'] > df['Volume'].rolling(20).mean() * 1.2
-    df['SL'] = sar.where((df['Close'] < sar) & (df['RSI'] < 30) & volume_filter, df['Close'])
-    df['TP'] = sar.where((df['Close'] > sar) & (df['RSI'] > 70) & volume_filter, df['Close'])
+    df['SL'] = np.where((df['Close'] < df['SAR']) & (df['RSI_14'] < 30) & volume_filter, df['SAR'], np.nan)
+    df['TP'] = np.where((df['Close'] > df['SAR']) & (df['RSI_14'] > 70), df['SAR'], np.nan)
     return df
 
 STRATEGY_FUNCTIONS = {
-    "支撐阻力": support_resistance,
-    "布林通道": bollinger_bands,
-    "ATR停損": atr_stop,
+    "支撐與阻力": support_resistance,
+    "布林通道策略": bollinger_bands_strategy,
+    "ATR 停損": atr_stop,
     "唐奇安通道": donchian_channel,
     "肯特納通道": keltner_channel,
     "一目均衡表": ichimoku_cloud,
     "均線交叉": ma_crossover,
-    "VWAP": vwap,
-    "拋物線SAR": parabolic_sar,
+    "VWAP 策略": vwap_strategy,
+    "拋物線轉向": parabolic_sar_strategy,
 }
 
-# =======================================================================
-# 4. 多策略共識 SL/TP 計算
-# =======================================================================
-
-def get_consensus_levels(df, current_price):
-    all_results = {}
-    sl_list, tp_list = [], []
-    for name, func in STRATEGY_FUNCTIONS.items():
-        try:
-            df_copy = df.copy()
-            res = func(df_copy)
-            sl = res['SL'].iloc[-1] if 'SL' in res.columns else np.nan
-            tp = res['TP'].iloc[-1] if 'TP' in res.columns else np.nan
-            sl_valid = sl if pd.notna(sl) and abs(sl-current_price) > 0.01 else np.nan
-            tp_valid = tp if pd.notna(tp) and abs(tp-current_price) > 0.01 else np.nan
-            all_results[name] = {'SL': sl_valid, 'TP': tp_valid}
-            if pd.notna(sl_valid): sl_list.append(sl_valid)
-            if pd.notna(tp_valid): tp_list.append(tp_valid)
-        except Exception:
-            all_results[name] = {'SL': np.nan, 'TP': np.nan}
-    consensus_sl = np.nanmean(sl_list) if sl_list else np.nan
-    consensus_tp = np.nanmean(tp_list) if tp_list else np.nan
-    return consensus_sl, consensus_tp, {k:[v['SL'],v['TP']] for k,v in all_results.items()}
-
-# =======================================================================
-# 5. 技術指標計算、基本面、籌碼、AI信號、回測、繪圖
-# =======================================================================
-
+# ==============================================================================
+# 4. 核心分析與指標計算
+# ==============================================================================
 def calculate_all_indicators(df):
     df['EMA_10'] = ta.trend.ema_indicator(df['Close'], window=10)
     df['EMA_50'] = ta.trend.ema_indicator(df['Close'], window=50)
     df['EMA_200'] = ta.trend.ema_indicator(df['Close'], window=200)
     df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
+    
     macd = ta.trend.MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
     df['MACD_Line'] = macd.macd()
     df['MACD_Signal'] = macd.macd_signal()
     df['MACD_Hist'] = macd.macd_diff()
+    
     df['RSI_9'] = ta.momentum.rsi(df['Close'], window=9)
     df['RSI_14'] = ta.momentum.rsi(df['Close'], window=14)
+    
     bb = ta.volatility.BollingerBands(df['Close'], window=20, window_dev=2)
     df['BB_High'] = bb.bollinger_hband()
     df['BB_Low'] = bb.bollinger_lband()
+    
     df['ATR_14'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
     df['ADX_14'] = ta.trend.adx(df['High'], df['Low'], df['Close'], window=14)
+    
     df['OBV'] = ta.volume.on_balance_volume(df['Close'], df['Volume'])
     df['CMF'] = ta.volume.chaikin_money_flow(df['High'], df['Low'], df['Close'], df['Volume'], window=20)
     df['MFI'] = ta.volume.money_flow_index(df['High'], df['Low'], df['Close'], df['Volume'], window=14)
+    
     ichimoku = ta.trend.IchimokuIndicator(df['High'], df['Low'], window1=9, window2=26, window3=52)
     df['Ichimoku_A'] = ichimoku.ichimoku_a()
     df['Ichimoku_B'] = ichimoku.ichimoku_b()
+    
     return df
+
+def get_consensus_levels(df, current_price):
+    sl_candidates, tp_candidates, all_results = [], [], {}
+    
+    for name, func in STRATEGY_FUNCTIONS.items():
+        try:
+            df_strat = func(df.copy())
+            sl = df_strat.iloc[-1].get('SL')
+            tp = df_strat.iloc[-1].get('TP')
+            all_results[name] = {'SL': sl, 'TP': tp}
+            if pd.notna(sl) and sl > 0 and sl < current_price:
+                sl_candidates.append(sl)
+            if pd.notna(tp) and tp > 0 and tp > current_price:
+                tp_candidates.append(tp)
+        except Exception:
+            continue
+            
+    if not sl_candidates and not tp_candidates:
+        return np.nan, np.nan, all_results
+
+    sl_candidates.sort(reverse=True)
+    tp_candidates.sort()
+    
+    consensus_sl = np.mean(sl_candidates[:3]) if len(sl_candidates) >= 3 else np.mean(sl_candidates) if sl_candidates else np.nan
+    consensus_tp = np.mean(tp_candidates[:3]) if len(tp_candidates) >= 3 else np.mean(tp_candidates) if tp_candidates else np.nan
+    
+    return consensus_sl, consensus_tp, all_results
 
 @st.cache_data(ttl=3600)
 def get_chips_and_news_analysis(symbol):
@@ -474,8 +469,9 @@ def get_chips_and_news_analysis(symbol):
         inst_holders = ticker.institutional_holders
         inst_hold_pct = 0
         if inst_holders is not None and not inst_holders.empty:
-            value = inst_holders.iloc[0, 2] # '% of Shares Held by All Insider'
+            value = inst_holders.iloc[0, 2] 
             inst_hold_pct = float(str(value).replace('%','')) / 100 if isinstance(value, str) else float(value)
+
         news = ticker.news
         headlines = [f"- {item['title']}" for item in news[:5]] if news else ["近期無相關新聞"]
         return {"inst_hold_pct": inst_hold_pct, "news_summary": "\n".join(headlines)}
@@ -492,14 +488,19 @@ def calculate_advanced_fundamental_rating(symbol):
         score, details = 0, {}
         roe = info.get('returnOnEquity')
         if roe and roe > 0.15: score += 2; details['ROE > 15%'] = f"✅ {roe:.2%}"
+        
         debt_to_equity = info.get('debtToEquity')
         if debt_to_equity is not None and debt_to_equity < 50: score += 2; details['負債權益比 < 50'] = f"✅ {debt_to_equity:.2f}"
+        
         revenue_growth = info.get('revenueGrowth')
         if revenue_growth and revenue_growth > 0.1: score += 1; details['營收年增 > 10%'] = f"✅ {revenue_growth:.2%}"
+
         pe = info.get('trailingPE')
         if pe and 0 < pe < 15: score += 1; details['P/E < 15'] = f"✅ {pe:.2f}"
+        
         peg = info.get('pegRatio')
         if peg and 0 < peg < 1: score += 1; details['PEG < 1'] = f"✅ {peg:.2f}"
+        
         summary = "頂級優異" if score >= 5 else "良好穩健" if score >= 3 else "中性警示"
         return {"score": score, "summary": summary, "details": details}
     except Exception:
@@ -510,53 +511,73 @@ def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
     df_clean = df.dropna(subset=required_cols)
     if df_clean.empty or len(df_clean) < 2: 
         return {'action': '數據不足', 'score': 0, 'confidence': 0, 'ai_opinions': {'核心問題': '數據點不足以生成可靠信號'}}
+    
     last, prev = df_clean.iloc[-1], df_clean.iloc[-2]
     opinions = {}
+    
     trend_score, momentum_score, volume_score, volatility_score = 0, 0, 0, 0
+    
     if last['EMA_10'] > last['EMA_50'] > last['EMA_200']: trend_score += 2; opinions['趨勢分析 (MA)'] = '✅ 強多頭排列'
     elif last['EMA_10'] < last['EMA_50'] < last['EMA_200']: trend_score -= 2; opinions['趨勢分析 (MA)'] = '❌ 強空頭排列'
     if last['ADX_14'] > 25: trend_score *= 1.2; opinions['趨勢強度 (ADX)'] = '✅ 強趨勢確認'
+    
     if last['RSI_9'] > 50: momentum_score += 1; opinions['動能 (RSI)'] = '✅ 多頭區域'
     else: momentum_score -= 1
     if last['MACD_Hist'] > 0 and last['MACD_Hist'] > prev['MACD_Hist']: momentum_score += 1.5; opinions['動能 (MACD)'] = '✅ 多頭動能增強'
     elif last['MACD_Hist'] < 0 and last['MACD_Hist'] < prev['MACD_Hist']: momentum_score -= 1.5; opinions['動能 (MACD)'] = '❌ 空頭動能增強'
+        
     if last['CMF'] > 0: volume_score += 1; opinions['資金流 (CMF)'] = '✅ 資金淨流入'
     else: volume_score -=1
     if last['MFI'] < 20: volume_score += 1.5; opinions['資金流 (MFI)'] = '✅ 資金超賣區'
     elif last['MFI'] > 80: volume_score -= 1.5; opinions['資金流 (MFI)'] = '❌ 資金超買區'
+        
     if last['Close'] < last['BB_Low']: volatility_score += 1; opinions['波動率 (BB)'] = '✅ 觸及下軌 (潛在反彈)'
     elif last['Close'] > last['BB_High']: volatility_score -= 1; opinions['波動率 (BB)'] = '❌ 觸及上軌 (潛在回調)'
+        
     ta_score = trend_score + momentum_score + volume_score + volatility_score
-    fa_score = ((fa_rating.get('score', 0) / 7.0) - 0.5) * 8.0 # 滿分7分制
-    chips_score = (chips_news_data.get('inst_hold_pct', 0) - 0.4) * 5 # 機構持有比例
+
+    fa_score = ((fa_rating.get('score', 0) / 7.0) - 0.5) * 8.0
+    chips_score = (chips_news_data.get('inst_hold_pct', 0) - 0.4) * 5
+    
     total_score = ta_score * 0.55 + fa_score * 0.25 + chips_score * 0.20
     confidence = min(100, 40 + abs(total_score) * 7)
+    
     action = '中性/觀望'
     if total_score > 4: action = '強力買進'
     elif total_score > 1.5: action = '買進'
     elif total_score < -4: action = '強力賣出'
     elif total_score < -1.5: action = '賣出'
+    
     return {'action': action, 'score': total_score, 'confidence': confidence, 'ai_opinions': opinions}
 
+# ==============================================================================
+# 5. 回測與圖表繪製
+# ==============================================================================
 def run_backtest(df, initial_capital=100000):
     try:
         data = df.copy()
         data['SMA_20'] = data['Close'].rolling(window=20).mean()
         data['EMA_50'] = data['Close'].ewm(span=50, adjust=False).mean()
         if data['SMA_20'].isna().all() or data['EMA_50'].isna().all(): return {"total_trades": 0, "message": "數據不足無法回測"}
+
         data['position'] = np.where(data['SMA_20'] > data['EMA_50'], 1, -1)
         data['returns'] = data['Close'].pct_change()
         data['strategy_returns'] = data['returns'] * data['position'].shift(1)
+        
         cumulative_returns = (1 + data['strategy_returns'].fillna(0)).cumprod()
         total_return = (cumulative_returns.iloc[-1] - 1) * 100
+        
         trades = data['position'].diff().ne(0)
         total_trades = trades.sum()
         if total_trades < 2: return {"total_trades": 0, "message": "無足夠交易信號"}
+            
         trade_returns = data['strategy_returns'][trades]
         win_rate = (trade_returns > 0).sum() / total_trades * 100 if total_trades > 0 else 0
+        
         peak = cumulative_returns.expanding(min_periods=1).max()
         drawdown = (cumulative_returns - peak) / peak
         max_drawdown = drawdown.min() * 100
+        
         return {
             "total_return": f"{total_return:.2f}", "win_rate": f"{win_rate:.2f}",
             "max_drawdown": f"{abs(max_drawdown):.2f}", "total_trades": total_trades,
@@ -578,31 +599,31 @@ def create_comprehensive_chart(df, symbol, period_key):
     fig.update_layout(title=f'{symbol} 技術分析圖 ({period_key})', xaxis_rangeslider_visible=False, height=700, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     return fig
 
-# =======================================================================
-# 6. 主邏輯/首頁UI（橘色字體，移除「專家」字眼）
-# =======================================================================
-
+# ==============================================================================
+# 6. UI 呈現與主邏輯
+# ==============================================================================
 def main():
     if 'run_analysis' not in st.session_state: st.session_state['run_analysis'] = False
 
-    st.sidebar.markdown("<span style='color: #FA8072; font-weight: bold;'>🚀 AI 趨勢分析</span>", unsafe_allow_html=True)
+    st.sidebar.title("🚀 AI 趨勢分析")
     st.sidebar.markdown("---")
-
+    
     selected_category = st.sidebar.selectbox('1. 選擇資產類別', list(CATEGORY_HOT_OPTIONS.keys()), index=1, key='category_selector')
     hot_options_map = CATEGORY_HOT_OPTIONS.get(selected_category, {})
-
+    
     default_symbol_key = '2330.TW - 台積電'
     if default_symbol_key not in hot_options_map:
         default_symbol_key = list(hot_options_map.keys())[0] if hot_options_map else None
+    
     default_index = list(hot_options_map.keys()).index(default_symbol_key) if default_symbol_key else 0
-
+    
     st.sidebar.selectbox('2. 選擇熱門標的', list(hot_options_map.keys()), index=default_index, key='hot_target_selector', on_change=sync_text_input_from_selection)
     st.sidebar.text_input('...或手動輸入代碼/名稱:', st.session_state.get('sidebar_search_input', '2330.TW'), key='sidebar_search_input')
-
+    
     st.sidebar.markdown("---")
     selected_period_key = st.sidebar.selectbox('3. 選擇分析週期', list(PERIOD_MAP.keys()), index=2)
     st.sidebar.markdown("---")
-
+    
     if st.sidebar.button('📊 執行AI分析', use_container_width=True):
         st.session_state['run_analysis'] = True
         st.session_state['symbol_to_analyze'] = get_symbol_from_query(st.session_state.sidebar_search_input)
@@ -612,36 +633,40 @@ def main():
         final_symbol = st.session_state['symbol_to_analyze']
         period_key = st.session_state['period_key']
         period, interval = PERIOD_MAP[period_key]
+
         with st.spinner(f"🔍 正在啟動AI模型，分析 **{final_symbol}**..."):
             df_raw = get_stock_data(final_symbol, period, interval)
-            if df_raw.empty or len(df_raw) < 60:
+            
+            if df_raw.empty or len(df_raw) < 60: 
                 st.error(f"❌ **數據不足或代碼無效：** {final_symbol}。AI模型至少需要60個數據點才能進行精準分析。")
             else:
                 info = get_company_info(final_symbol)
                 fa_rating = calculate_advanced_fundamental_rating(final_symbol)
                 chips_data = get_chips_and_news_analysis(final_symbol)
+                
                 df_tech = calculate_all_indicators(df_raw.copy())
                 analysis = generate_ai_fusion_signal(df_tech, fa_rating, chips_data)
+                
                 price = df_raw['Close'].iloc[-1]
                 consensus_sl, consensus_tp, all_strategy_results = get_consensus_levels(df_tech, price)
 
                 st.header(f"📈 {info['name']} ({final_symbol}) AI趨勢分析報告")
-
+                
                 st.markdown(f"**分析週期:** {period_key} | **FA評級:** **{fa_rating.get('score',0):.1f}/7.0** ({fa_rating.get('summary','N/A')})")
                 st.markdown("---")
-
+                
                 st.subheader("💡 核心行動與量化評分")
                 prev_close = df_raw['Close'].iloc[-2] if len(df_raw) > 1 else price
                 change, pct = price - prev_close, (price - prev_close) / prev_close * 100 if prev_close != 0 else 0
                 currency_symbol = get_currency_symbol(final_symbol)
                 pf = ".4f" if price < 100 and currency_symbol != 'NT$' else ".2f"
-
+                
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("💰 當前價格", f"{currency_symbol}{price:{pf}}", f"{change:+.{pf}} ({pct:+.2f}%)")
                 c2.metric("🎯 AI 行動建議", analysis['action'])
                 c3.metric("🔥 AI 總量化評分", f"{analysis['score']:.2f}")
                 c4.metric("🛡️ AI 信心指數", f"{analysis['confidence']:.0f}%")
-
+                
                 st.markdown("---")
                 st.subheader("🛡️ AI 綜合策略與風險控制")
                 s1, s2, s3 = st.columns(3)
