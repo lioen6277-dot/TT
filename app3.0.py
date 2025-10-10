@@ -605,6 +605,36 @@ def get_fundamental_ratings(symbol):
     except Exception:
         return results
 
+@st.cache_data(ttl=3600)
+def get_chips_and_news_analysis(symbol):
+    """
+    獲取籌碼面 (機構持股) 和消息面 (新聞) 數據。
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        
+        # 籌碼面: 機構持股比例
+        inst_holders = ticker.institutional_holders
+        inst_hold_pct = 0
+        if inst_holders is not None and not inst_holders.empty and '% of Shares Held by Institutions' in inst_holders.columns:
+            # 嘗試從 yfinance 的不同欄位獲取數據
+            try:
+                value = inst_holders.loc[0, '% of Shares Held by Institutions']
+                inst_hold_pct = float(str(value).strip('%')) / 100 if isinstance(value, str) else float(value)
+            except (KeyError, IndexError):
+                # 如果上述欄位不存在，嘗試其他可能的欄位
+                if not inst_holders.empty and len(inst_holders.columns) > 2:
+                    value = inst_holders.iloc[0, 2] # 假設在第三欄
+                    inst_hold_pct = float(str(value).replace('%','')) / 100 if isinstance(value, str) else float(value)
+
+        # 消息面: 近期新聞
+        news = ticker.news
+        headlines = [f"- {item['title']}" for item in news[:5]] if news else ["近期無相關新聞"]
+        
+        return {"inst_hold_pct": inst_hold_pct, "news_summary": "\n".join(headlines)}
+    except Exception:
+        return {"inst_hold_pct": 0, "news_summary": "無法獲取新聞數據。"}
+
 # ==============================================================================
 # 5. AI 融合信號與技術分析解釋 (AI Signal & Interpretation)
 # ==============================================================================
@@ -845,17 +875,14 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     index_to_use = data.index[:len(capital)]
     capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
 
-    # --- 應用使用者要求的計算邏輯 ---
-    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
-    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
-    total_return = ((current_capital - initial_capital) / initial_capital) * 100
+    total_return = ((capital_series.iloc[-1] - initial_capital) / initial_capital) * 100 if not capital_series.empty else 0
     total_trades = len(trades)
     win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
     
     # 最大回撤計算
     max_value = capital_series.expanding(min_periods=1).max()
     drawdown = (capital_series - max_value) / max_value
-    max_drawdown = abs(drawdown.min()) * 100
+    max_drawdown = abs(drawdown.min()) * 100 if not drawdown.empty else 0
     
     return {
         "total_return": round(total_return, 2),
