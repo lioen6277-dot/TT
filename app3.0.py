@@ -589,12 +589,6 @@ def main():
             st.plotly_chart(fig_professional, use_container_width=True)
 
     else:
-        st.markdown(
-              """
-              <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
-              """, 
-              unsafe_allow_html=True
-          )
         st.markdown(f"請在左側選擇或輸入您想分析的標的（例如：**2330.TW**、**NVDA**、**BTC-USD**），然後點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True)
         st.markdown("---")
         st.subheader("📝 使用步驟：")
@@ -621,4 +615,5 @@ if __name__ == '__main__':
         st.session_state['analyze_trigger'] = False
         
     main()
+
 
