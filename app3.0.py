@@ -428,12 +428,7 @@ with st.sidebar:
 # --- 主畫面顯示 ---
 if not start_analysis:
     # 歡迎頁面
-    st.markdown(
-                  """
-                  <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
-                  """, 
-                  unsafe_allow_html=True
-              )
+    st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀</span> 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
     st.markdown("請在左側選擇或輸入您想分析的標的（例如：`2330.TW`、`NVDA`、`BTC-USD`），然後點擊 **『📊 執行AI分析』** 按鈕開始。")
     st.markdown("---")
     st.subheader("📝 使用步驟：")
@@ -507,7 +502,7 @@ else:
                 """, unsafe_allow_html=True)
                 
                 # AI 判讀 (XAI)
-                st.subheader("🧠 關鍵技術指標與AI判讀 (決策依據)")
+                st.subheader("🧠 關鍵技術指標")
                 opinions_html = "<table class='custom-table'><thead><tr><th>AI領域</th><th>判斷結果</th></tr></thead><tbody>"
                 for dim, result in signal['opinions'].items():
                     opinions_html += f"<tr><td>{dim}</td><td>{result}</td></tr>"
@@ -520,7 +515,7 @@ else:
                 st.markdown(tech_df.to_html(escape=False, classes='custom-table'), unsafe_allow_html=True)
                 
                 # 回測報告
-                st.subheader("🧪 策略回測報告 (SMA 20/EMA 50 交叉)")
+                st.subheader("🧪 策略回測報告")
                 if backtest and backtest.get("total_trades", 0) > 0:
                     st.markdown(f"""
                     <div class="metric-container">
@@ -574,4 +569,5 @@ else:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
+
 
