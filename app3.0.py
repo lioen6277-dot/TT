@@ -526,6 +526,88 @@ def calculate_comprehensive_indicators(df):
     
     return df
 
+@st.cache_data(ttl=3600)
+def get_fundamental_ratings(symbol):
+    """
+    【核心修正：基本面評分統一】
+    整合原始的 calculate_advanced_fundamental_rating (AI Score) 
+    和 calculate_fundamental_rating (Display Score) 邏輯。
+    """
+    results = {
+        "AI_SCORE": {"score": 0, "summary": "不適用", "details": {}},
+        "DISPLAY_SCORE": {"Combined_Rating": 0.0, "Message": "不適用：指數或加密貨幣無標準基本面數據。", "Details": None}
+    }
+    
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # 排除指數和加密貨幣
+        if info.get('quoteType') in ['INDEX', 'CRYPTOCURRENCY', 'ETF'] or symbol.startswith('^') or symbol.endswith('-USD'):
+            return results
+
+        # --- 1. 原始 Advanced Rating (AI Fusion Score) 邏輯 ---
+        ai_score, ai_details = 0, {}
+        roe = info.get('returnOnEquity')
+        if roe and roe > 0.15: ai_score += 2; ai_details['ROE > 15%'] = f"✅ {roe:.2%}"
+        debt_to_equity = info.get('debtToEquity')
+        if debt_to_equity is not None and debt_to_equity < 50: ai_score += 2; ai_details['負債權益比 < 50'] = f"✅ {debt_to_equity:.2f}"
+        revenue_growth = info.get('revenueGrowth')
+        if revenue_growth and revenue_growth > 0.1: ai_score += 1; ai_details['營收年增 > 10%'] = f"✅ {revenue_growth:.2%}"
+        pe = info.get('trailingPE')
+        if pe and 0 < pe < 15: ai_score += 1; ai_details['P/E < 15'] = f"✅ {pe:.2f}"
+        peg = info.get('pegRatio')
+        if peg and 0 < peg < 1: ai_score += 1; ai_details['PEG < 1'] = f"✅ {peg:.2f}"
+        ai_summary = "頂級優異" if ai_score >= 5 else "良好穩健" if ai_score >= 3 else "中性警示"
+        results["AI_SCORE"] = {"score": ai_score, "summary": ai_summary, "details": ai_details}
+        
+        # --- 2. 原始 Display Rating (Display Score) 邏輯 ---
+        
+        # 準備變數
+        trailingPE = info.get('trailingPE', 99)
+        freeCashFlow = info.get('freeCashflow', 0)
+        totalCash = info.get('totalCash', 0)
+        totalDebt = info.get('totalDebt', 0)
+        
+        # 1. 成長與效率評分 (ROE) (總分 3)
+        roe_score = 0
+        if roe and roe > 0.15: roe_score = 3
+        elif roe and roe > 0.10: roe_score = 2
+        elif roe and roe > 0: roe_score = 1
+        
+        # 2. 估值評分 (PE) (總分 3)
+        pe_score = 0
+        if trailingPE and 0 < trailingPE < 15: pe_score = 3
+        elif trailingPE and 0 < trailingPE < 25: pe_score = 2
+        elif trailingPE and 0 < trailingPE < 35: pe_score = 1
+        
+        # 3. 現金流與償債能力 (總分 3)
+        cf_score = 0
+        cash_debt_ratio = (totalCash / totalDebt) if totalDebt and totalDebt != 0 else 100
+        if freeCashFlow and freeCashFlow > 0 and cash_debt_ratio > 2: cf_score = 3
+        elif freeCashFlow and freeCashFlow > 0 and cash_debt_ratio > 1: cf_score = 2
+        elif freeCashFlow and freeCashFlow > 0: cf_score = 1
+
+        combined_rating = roe_score + pe_score + cf_score
+        message = "頂級優異 (9分滿分)" if combined_rating >= 8 else "良好穩健" if combined_rating >= 5 else "中性警示" if combined_rating >= 3 else "基本面較弱"
+        
+        details = {
+            "ROE 評分 (滿分3)": roe_score,
+            "P/E 評分 (滿分3)": pe_score,
+            "現金流/債務評分 (滿分3)": cf_score,
+        }
+        
+        results["DISPLAY_SCORE"] = {
+            "Combined_Rating": combined_rating, 
+            "Message": message, 
+            "Details": details
+        }
+        
+        return results
+        
+    except Exception:
+        return results
+
 def get_technical_data_df(df):
     """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
     
@@ -1045,6 +1127,7 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
+
 
 
 
