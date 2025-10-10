@@ -490,7 +490,7 @@ if start_analysis:
                 """, unsafe_allow_html=True)
 
                 # AI 判讀 (XAI)
-                st.markdown("<h3>🧠 關鍵技術指標與AI判讀 (決策依據)</h3>", unsafe_allow_html=True)
+                st.markdown("<h3>🧠 關鍵技術指標</h3>", unsafe_allow_html=True)
                 opinions_html = "<table class='custom-table'><tr><th>AI領域</th><th>判斷結果</th></tr>"
                 for dim, result in signal['opinions'].items():
                     opinions_html += f"<tr><td>{dim}</td><td>{result}</td></tr>"
@@ -503,7 +503,7 @@ if start_analysis:
                 st.markdown(tech_df.to_html(escape=False, classes='custom-table'), unsafe_allow_html=True)
                 
                 # 回測報告
-                st.markdown("<h3>🧪 策略回測報告 (SMA 20/EMA 50 交叉)</h3>", unsafe_allow_html=True)
+                st.markdown("<h3>🧪 策略回測報告</h3>", unsafe_allow_html=True)
                 if backtest and backtest.get("total_trades", 0) > 0:
                     st.markdown(f"""
                     <div class="metric-container">
@@ -561,10 +561,31 @@ if start_analysis:
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
 
+
+    elif not st.session_state.get('data_ready', False) and not analyze_button_clicked:
+          st.markdown(
+              """
+              <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
+              """, 
+              unsafe_allow_html=True
+          )
+          
+          st.markdown(f"請在左側選擇或輸入您想分析的標的（例如：**2330.TW**、**NVDA**、**BTC-USD**），然後點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True)
+          
+          st.markdown("---")
+          
+          st.subheader("📝 使用步驟：")
+          st.markdown("1. **選擇資產類別**：在左側欄選擇 `美股`、`台股` 或 `加密貨幣`。")
+          st.markdown("2. **選擇標的**：使用下拉選單快速選擇熱門標的，或直接在輸入框中鍵入代碼或名稱。")
+          st.markdown("3. **選擇週期**：決定分析的長度（例如：`30 分`、`4 小時`、`1 日`、`1 周`）。")
+          st.markdown(f"4. **執行分析**：點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』**</span>，AI將融合基本面與技術面指標提供交易策略。", unsafe_allow_html=True)
+          
+          st.markdown("---")
 else:
     # 歡迎頁面
     st.markdown("<h1 style='color: #FA8072;'>🚀 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
     st.markdown("請在左側選擇或輸入您想分析的標的，然後點擊 <span style='font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True)
     st.markdown("---")
     st.info("⚠️ **免責聲明:** 本分析僅供參考，不構成任何投資建議。所有交易決策應基於您個人的獨立研究。")
+
 
