@@ -400,10 +400,7 @@ def get_technical_data_df(df):
 # --- 3. Streamlit 使用者介面 (UI) ---
 
 with st.sidebar:
-    st.image("https://i.imgur.com/g0K6f2y.png", width=50) # Logo
-    st.header("分析設定")
-    st.markdown("---")
-    
+  
     st.subheader("1. 選擇資產類別")
     def on_change_callback(): st.session_state.manual_input = ""
     selected_category = st.selectbox("資產類別", list(CATEGORY_HOT_OPTIONS.keys()), on_change=on_change_callback, key="sb_category", label_visibility="collapsed")
@@ -431,7 +428,12 @@ with st.sidebar:
 # --- 主畫面顯示 ---
 if not start_analysis:
     # 歡迎頁面
-    st.markdown("<h1><span style='font-size: 32px;'>🚀</span> 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
+    st.markdown(
+                  """
+                  <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
+                  """, 
+                  unsafe_allow_html=True
+              )
     st.markdown("請在左側選擇或輸入您想分析的標的（例如：`2330.TW`、`NVDA`、`BTC-USD`），然後點擊 **『📊 執行AI分析』** 按鈕開始。")
     st.markdown("---")
     st.subheader("📝 使用步驟：")
@@ -572,3 +574,4 @@ else:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
+
