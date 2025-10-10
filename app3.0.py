@@ -7,6 +7,7 @@ import streamlit as st
 import ta
 import yfinance as yf
 from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
 
 warnings.filterwarnings('ignore')
 
@@ -15,16 +16,16 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析📈", 
-    page_icon="🚀", 
+    page_title="AI趨勢分析📈",
+    page_icon="🚀",
     layout="wide"
 )
 
 # 週期映射：(YFinance Period, YFinance Interval)
-PERIOD_MAP = { 
-    "30 分": ("60d", "30m"), 
-    "4 小時": ("1y", "60m"), 
-    "1 日": ("5y", "1d"), 
+PERIOD_MAP = {
+    "30 分": ("60d", "30m"),
+    "4 小時": ("1y", "60m"),
+    "1 日": ("5y", "1d"),
     "1 週": ("max", "1wk")
 }
 
@@ -226,6 +227,7 @@ FULL_SYMBOLS_MAP = {
     "XTZ-USD": {"name": "Tezos", "keywords": ["Tezos", "XTZ", "公鏈"]},
     "ZEC-USD": {"name": "大零幣 (ZCash)", "keywords": ["大零幣", "ZCash", "ZEC", "隱私幣"]},
 }
+
 
 CATEGORY_MAP = {
     "美股 (US) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
@@ -520,10 +522,6 @@ def calculate_comprehensive_indicators(df):
     df['CMF'] = ta.volume.chaikin_money_flow(df['High'], df['Low'], df['Close'], df['Volume'], window=20)
     df['MFI'] = ta.volume.money_flow_index(df['High'], df['Low'], df['Close'], df['Volume'], window=14)
     
-    ichimoku = ta.trend.IchimokuIndicator(df['High'], df['Low'], window1=9, window2=26, window3=52)
-    df['Ichimoku_A'] = ichimoku.ichimoku_a()
-    df['Ichimoku_B'] = ichimoku.ichimoku_b()
-    
     return df
 
 @st.cache_data(ttl=3600)
@@ -607,6 +605,63 @@ def get_fundamental_ratings(symbol):
         
     except Exception:
         return results
+
+# ==============================================================================
+# 5. AI 融合信號與技術分析解釋 (AI Signal & Interpretation)
+# ==============================================================================
+
+def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
+    """ 
+    AI 融合信號：基於原始設計，需要確保使用 calculate_comprehensive_indicators 
+    所產生的帶 '_AI' 或原始 AI 預期名稱的欄位。 
+    """
+    required_cols = ['EMA_10', 'EMA_50', 'EMA_200', 'RSI_9', 'MACD_Hist_AI', 'ADX_AI', 'CMF', 'MFI', 'BB_Low', 'BB_High']
+    df_clean = df.dropna(subset=required_cols)
+    if df_clean.empty or len(df_clean) < 2: 
+        return {'action': '數據不足', 'score': 0, 'confidence': 0, 'ai_opinions': {'核心問題': '數據點不足以生成可靠信號'}}
+    
+    last, prev = df_clean.iloc[-1], df_clean.iloc[-2]
+    opinions = {}
+    trend_score, momentum_score, volume_score, volatility_score = 0, 0, 0, 0
+    
+    # 趨勢分析
+    if last['EMA_10'] > last['EMA_50'] > last['EMA_200']: trend_score += 2; opinions['趨勢分析 (MA)'] = '✅ 強多頭排列'
+    elif last['EMA_10'] < last['EMA_50'] < last['EMA_200']: trend_score -= 2; opinions['趨勢分析 (MA)'] = '❌ 強空頭排列'
+    if last['ADX_AI'] > 25: trend_score *= 1.2; opinions['趨勢強度 (ADX)'] = '✅ 強趨勢確認'
+    
+    # 動能分析
+    if last['RSI_9'] > 50: momentum_score += 1; opinions['動能 (RSI)'] = '✅ 多頭區域'
+    else: momentum_score -= 1
+    if last['MACD_Hist_AI'] > 0 and last['MACD_Hist_AI'] > prev['MACD_Hist_AI']: momentum_score += 1.5; opinions['動能 (MACD)'] = '✅ 多頭動能增強'
+    elif last['MACD_Hist_AI'] < 0 and last['MACD_Hist_AI'] < prev['MACD_Hist_AI']: momentum_score -= 1.5; opinions['動能 (MACD)'] = '❌ 空頭動能增強'
+    
+    # 量能分析
+    if last['CMF'] > 0: volume_score += 1; opinions['資金流 (CMF)'] = '✅ 資金淨流入'
+    else: volume_score -=1
+    if last['MFI'] < 20: volume_score += 1.5; opinions['資金流 (MFI)'] = '✅ 資金超賣區'
+    elif last['MFI'] > 80: volume_score -= 1.5; opinions['資金流 (MFI)'] = '❌ 資金超買區'
+    
+    # 波動率分析
+    if last['Close'] < last['BB_Low']: volatility_score += 1; opinions['波動率 (BB)'] = '✅ 觸及下軌 (潛在反彈)'
+    elif last['Close'] > last['BB_High']: volatility_score -= 1; opinions['波動率 (BB)'] = '❌ 觸及上軌 (潛在回調)'
+    
+    # 融合計算
+    ta_score = trend_score + momentum_score + volume_score + volatility_score
+    # 使用 AI_SCORE (滿分7分制)
+    fa_score = ((fa_rating.get('score', 0) / 7.0) - 0.5) * 8.0 
+    # 原始程式碼中的籌碼數據 (此處假設 chips_news_data 已被外部獲取)
+    chips_score = (chips_news_data.get('inst_hold_pct', 0) - 0.4) * 5 
+    
+    total_score = ta_score * 0.55 + fa_score * 0.25 + chips_score * 0.20
+    confidence = min(100, 40 + abs(total_score) * 7)
+    
+    action = '中性/觀望'
+    if total_score > 4: action = '強力買進'
+    elif total_score > 1.5: action = '買進'
+    elif total_score < -4: action = '強力賣出'
+    elif total_score < -1.5: action = '賣出'
+    
+    return {'action': action, 'score': total_score, 'confidence': confidence, 'ai_opinions': opinions}
 
 def get_technical_data_df(df):
     """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
@@ -787,130 +842,42 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
         if capital:
             capital[-1] = current_capital 
     
-    total_return = (capital[-1] - initial_capital) / initial_capital * 100 if capital else 0
-    total_trades = len(trades)
-    win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
-
     # 由於 capital 列表包含 initial_capital，其長度應為 len(data)
     index_to_use = data.index[:len(capital)]
     capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
+
+    # --- 應用使用者要求的計算邏輯 ---
+    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
+    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
+    total_return = ((current_capital - initial_capital) / initial_capital) * 100
+    total_trades = len(trades)
+    win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
     
+    # 最大回撤計算
     max_value = capital_series.expanding(min_periods=1).max()
     drawdown = (capital_series - max_value) / max_value
-    max_drawdown = abs(drawdown.min()) * 100 if not drawdown.empty else 0
-
-    trades_list = []
-    for t in trades:
-        trades_list.append({
-            "Entry_Date": t.get('entry_date'),
-            "Exit_Date": t.get('exit_date'),
-            "Entry_Price": t.get('entry_price', None) if 'entry_price' in t else None,
-            "Exit_Price": t.get('exit_price', None) if 'exit_price' in t else None,
-            "Profit_Pct": t.get('profit_pct'),
-            "Is_Win": t.get('is_win')
-        })
-
+    max_drawdown = abs(drawdown.min()) * 100
+    
     return {
         "total_return": round(total_return, 2),
         "win_rate": round(win_rate, 2),
         "max_drawdown": round(max_drawdown, 2),
         "total_trades": total_trades,
         "message": f"回測區間 {data.index[0].strftime('%Y-%m-%d')} 到 {data.index[-1].strftime('%Y-%m-%d')}。",
-        "capital_curve": capital_series,
-        "trades_list": trades_list
+        "capital_curve": capital_series
     }
 
-def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, backtest_curve):
-    """
-    K線、技術指標與交易目標繪圖
-    (此函數假設 Streamlit 介面和 Plotly 繪圖邏輯從原始檔案末端延續並正確使用所有指標)
-    """
-    
-    # 確保 DF 包含所有核心指標欄位
-    df = df.dropna(subset=['SMA_20', 'EMA_50', 'BB_High', 'BB_Low', 'MACD', 'RSI']) 
-
-    # 創建主圖 (K線/MA/BB) 和三個子圖 (MACD, RSI, Volume)
-    fig = make_subplots(
-        rows=4, 
-        cols=1, 
-        shared_xaxes=True, 
-        vertical_spacing=0.05, 
-        row_heights=[0.5, 0.15, 0.15, 0.20] # 調整子圖高度比例
-    )
-
-    # --- Row 1: K線圖, MA, BB, SL/TP ---
-    
-    # 1. K線圖
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name=f'{symbol_name} K線'
-        ),
-        row=1, col=1
-    )
-
-    # 2. 移動平均線 (SMA 20, EMA 50, EMA 200)
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], line=dict(color='orange', width=1), name='SMA 20'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='blue', width=1), name='EMA 50'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='purple', width=1), name='EMA 200'), row=1, col=1)
-
-    # 3. 布林通道 (BB)
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], line=dict(color='gray', width=0.5), name='BB Upper', opacity=0.5), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], line=dict(color='gray', width=0.5), name='BB Lower', opacity=0.5, fill='tonexty', fillcolor='rgba(128,128,128,0.05)'), row=1, col=1)
-
-    # 4. SL/TP 共識線 (來自 get_consensus_levels)
-    if pd.notna(sl_tp_levels['SL']):
-        fig.add_trace(go.Scatter(x=[df.index[-1]], y=[sl_tp_levels['SL']], mode='lines+markers', line=dict(dash='dash', color='green'), name=f'共識 SL ({sl_tp_levels["SL"]:,.2f})', marker=dict(symbol='triangle-down', size=8, color='green')), row=1, col=1)
-    if pd.notna(sl_tp_levels['TP']):
-        fig.add_trace(go.Scatter(x=[df.index[-1]], y=[sl_tp_levels['TP']], mode='lines+markers', line=dict(dash='dash', color='red'), name=f'共識 TP ({sl_tp_levels["TP"]:,.2f})', marker=dict(symbol='triangle-up', size=8, color='red')), row=1, col=1)
-    
-    # --- Row 2: MACD ---
-    fig.add_trace(go.Bar(x=df.index, y=df['MACD'], name='MACD Hist', marker_color=np.where(df['MACD'] >= 0, 'red', 'green')), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='blue'), name='MACD Line'), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='orange'), name='MACD Signal'), row=2, col=1)
-
-    # --- Row 3: RSI ---
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple'), name='RSI (9)'), row=3, col=1)
-    fig.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0, row=3, col=1)
-    fig.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0, row=3, col=1)
-    fig.add_hline(y=50, line_dash="dash", line_color="gray", row=3, col=1)
-
-    # --- Row 4: Volume (OBV, CMF, MFI, Volume) ---
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='rgba(0,0,0,0.5)', opacity=0.5), row=4, col=1)
-    
-    # 更新佈局
-    fig.update_layout(
-        title=f'<b style="color: #FA8072;">{symbol_name}</b> {period_name} K線與技術分析',
-        xaxis_rangeslider_visible=False,
-        height=900,
-        showlegend=True,
-        template='plotly_white',
-    )
-    
-    fig.update_xaxes(showgrid=False, row=1, col=1)
-    fig.update_yaxes(title_text='價格', row=1, col=1)
-    fig.update_yaxes(title_text='MACD', row=2, col=1)
-    fig.update_yaxes(title_text='RSI', range=[0, 100], row=3, col=1)
-    fig.update_yaxes(title_text='量能', row=4, col=1)
-    
-    # 增加資金曲線子圖 (原設計的一部分)
-    if backtest_curve is not None and not backtest_curve.empty:
-        # 在 Streamlit 中，通常會將資金曲線獨立出來或在主圖中以折線圖呈現。
-        # 為了完整性，這裡假定它獨立繪製。
-        st.subheader("💰 回測資金曲線")
-        fig_curve = go.Figure()
-        fig_curve.add_trace(go.Scatter(x=backtest_curve.index, y=backtest_curve.values, mode='lines', name='資金淨值曲線', line=dict(color='green', width=2)))
-        fig_curve.update_layout(
-            title='SMA 20 / EMA 50 交叉策略資金淨值變化',
-            yaxis_title='淨值',
-            height=300
-        )
-        st.plotly_chart(fig_curve, use_container_width=True)
-        
+def create_comprehensive_chart(df, symbol, period_key):
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.6, 0.2, 0.2])
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_10'], mode='lines', name='EMA 10', line=dict(color='orange', width=1)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], mode='lines', name='EMA 50', line=dict(color='blue', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], mode='lines', name='EMA 200', line=dict(color='red', width=2, dash='dot')), row=1, col=1)
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD Histogram', marker_color=np.where(df['MACD_Hist'] > 0, 'green', 'red')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI_9'], name='RSI (9)', line=dict(color='purple')), row=3, col=1)
+    fig.add_hrect(y0=70, y1=100, line_width=0, fillcolor="red", opacity=0.2, row=3, col=1)
+    fig.add_hrect(y0=0, y1=30, line_width=0, fillcolor="green", opacity=0.2, row=3, col=1)
+    fig.update_layout(title=f'{symbol} 技術分析圖 ({period_key})', xaxis_rangeslider_visible=False, height=700, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     return fig
 
 # ==============================================================================
@@ -1127,7 +1094,3 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
-
-
-
-
