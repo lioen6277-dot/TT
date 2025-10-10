@@ -247,6 +247,16 @@ for category, codes in CATEGORY_MAP.items():
 # 2. 數據獲取與基本資訊處理 (Data Fetching & Info)
 # ==============================================================================
 
+def sync_text_input_from_selection():
+    """當下拉選單變動時，觸發此函式，更新文字輸入框的值。"""
+    try:
+        selected_category = st.session_state.category_selector
+        selected_hot_key = st.session_state.hot_target_selector
+        symbol_code = CATEGORY_HOT_OPTIONS[selected_category][selected_hot_key]
+        st.session_state.sidebar_search_input = symbol_code
+    except Exception:
+        pass # 忽略可能因快速切換選單產生的暫時性錯誤
+
 def get_symbol_from_query(query: str) -> str:
     """ 🎯 代碼解析函數：同時檢查 FULL_SYMBOLS_MAP 中的代碼和關鍵字 """
     query = query.strip()
@@ -1035,3 +1045,6 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
+
+
+
