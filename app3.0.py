@@ -449,11 +449,6 @@ def main():
     # (UPDATED v8.1) 將標題移至歡迎頁面邏輯之外
     if 'analysis_results' not in st.session_state or st.session_state['analysis_results'] is None:
         st.markdown(
-              """
-              <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
-              """, 
-              unsafe_allow_html=True
-          )
     
     st.sidebar.header("分析設定")
     st.sidebar.markdown("---")
@@ -621,4 +616,5 @@ if __name__ == '__main__':
         st.session_state['analyze_trigger'] = False
         
     main()
+
 
