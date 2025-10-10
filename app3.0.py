@@ -49,11 +49,41 @@ st.set_page_config(
 # (UPDATED v8.0) 融合 app2.0 的 CSS
 st.markdown("""
 <style>
+    /* 全局深色主題 */
+    body, .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    /* 側邊欄樣式 */
+    [data-testid="stSidebar"] {
+        background-color: #161A25;
+        border-right: 1px solid #333;
+    }
+    /* 主要內容區塊 */
+    .main .block-container {
+        padding-top: 2rem;
+    }
+    /* 標題樣式 */
+    h1, h2, h3, .st-info p {
+        color: #E0E0E0 !important;
+        font-weight: 600;
+    }
+    h1 { color: #cc6600; }
+    /* st.metric樣式覆蓋 */
+    [data-testid="stMetricValue"] { font-size: 20px; }
+    [data-testid="stMetricLabel"] { font-size: 13px; }
+    [data-testid="stMetricDelta"] { font-size: 12px; }
+    
+    /* 顏色標記 (紅=多頭, 綠=空頭, 鮭魚色=中性) */
+    .positive, .action-buy, .action-hold-buy { color: #dc3545; font-weight: bold; } /* 紅色 */
+    .negative, .action-sell, .action-hold-sell { color: #28a745; font-weight: bold; } /* 綠色 */
+    .neutral, .action-neutral { color: #FA8072; font-weight: bold; } /* 鮭魚色 */
+
     /* 側邊欄的主要分析按鈕 - 核心玻璃化設置 (鮭魚色：#FA8072) */
     [data-testid="stSidebar"] .stButton button {
-        color: #FA8072 !important; /* 淡橙色文字 */
-        background-color: rgba(255, 255, 255, 0.1) !important; /* 透明背景 */
-        border-color: #FA8072 !important; /* 淡橙色邊框 */
+        color: #FA8072 !important;
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border-color: #FA8072 !important;
         border-width: 1px !important;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08); 
         border-radius: 8px;
@@ -74,18 +104,6 @@ st.markdown("""
         border-color: #E9967A !important;
         box-shadow: none !important; 
     }
-    /* 修正主標題顏色 */
-    h1 { color: #cc6600; } 
-    /* st.metric樣式覆蓋 */
-    [data-testid="stMetricValue"] { font-size: 20px; }
-    [data-testid="stMetricLabel"] { font-size: 13px; }
-    [data-testid="stMetricDelta"] { font-size: 12px; }
-    /* 自訂行動建議文字顏色 */
-    .action-buy { color: #dc3545; font-weight: bold; }
-    .action-sell { color: #28a745; font-weight: bold; }
-    .action-neutral { color: #FA8072; font-weight: bold; }
-    .action-hold-buy { color: #FA8072; font-weight: bold; }
-    .action-hold-sell { color: #80B572; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -117,13 +135,13 @@ FULL_SYMBOLS_MAP = {
 
 # 建立資產類別映射
 CATEGORY_MAP = {
-    "美股 (US) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
-    "台股 (TW) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith(".TW") or c.startswith("^TWII")],
+    "美股 (US)": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
+    "台股 (TW)": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith(".TW") or c.startswith("^TWII")],
     "加密貨幣 (Crypto)": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith("-USD")],
 }
 
 CATEGORY_HOT_OPTIONS = {
-    category: {f"{code} - {FULL_SYMBOLS_MAP.get(code, {}).get('name', code)}": code for code in sorted(codes)}
+    category: {f"{code} - {FULL_SYMBOLS_MAP[code]['name']}": code for code in sorted(codes)}
     for category, codes in CATEGORY_MAP.items()
 }
 
@@ -144,9 +162,7 @@ def get_symbol_from_query(query: str) -> str:
         if query_upper == code or query == data["name"] or any(query_upper == kw.upper() for kw in data["keywords"]):
             return code
     if re.fullmatch(r'\d{4,6}', query):
-        tw_code = f"{query}.TW"
-        if tw_code in FULL_SYMBOLS_MAP: return tw_code
-        return tw_code
+        return f"{query}.TW"
     return query_upper
 
 @st.cache_data(ttl=600)
@@ -155,8 +171,6 @@ def get_data(symbol, period, interval):
         df = yf.Ticker(symbol).history(period=period, interval=interval)
         if df.empty: return None
         df.columns = [col.capitalize() for col in df.columns]
-        df = df[~df.index.duplicated(keep='first')]
-        df = df.iloc[:-1] 
         return df[['Open', 'High', 'Low', 'Close', 'Volume']]
     except Exception: return None
 
@@ -214,29 +228,6 @@ def get_fundamental_data(symbol):
         ticker = yf.Ticker(symbol)
         return {'info': ticker.info}
     except: return {'info': {}}
-    
-@st.cache_data(ttl=3600)
-def get_company_info(symbol):
-    info = FULL_SYMBOLS_MAP.get(symbol, {})
-    if info:
-        if symbol.endswith(".TW") or symbol.startswith("^TWII"): category, currency = "台股 (TW)", "TWD"
-        elif symbol.endswith("-USD"): category, currency = "加密貨幣 (Crypto)", "USD"
-        else: category, currency = "美股 (US)", "USD"
-        return {"name": info['name'], "category": category, "currency": currency}
-    
-    try:
-        ticker = yf.Ticker(symbol)
-        yf_info = ticker.info
-        name = yf_info.get('longName') or yf_info.get('shortName') or symbol
-        currency = yf_info.get('currency') or "USD"
-        category = "未分類"
-        if symbol.endswith(".TW"): category = "台股 (TW)"
-        elif symbol.endswith("-USD"): category = "加密貨幣 (Crypto)"
-        elif symbol.startswith("^"): category = "指數"
-        elif currency == "USD": category = "美股 (US)"
-        return {"name": name, "category": category, "currency": currency}
-    except:
-        return {"name": symbol, "category": "未分類", "currency": "USD"}
 
 def calculate_fundamental_scores(info):
     roe = info.get('returnOnEquity', 0) or 0
@@ -284,6 +275,14 @@ def generate_ai_fusion_signal(df, funda_scores, inst_hold_pct):
     elif stoch_k > 80: opinions['擺盪指標 (Stochastic)'] = f"警告: 隨機指標超買 ({stoch_k:.1f} > 80)"
     else: opinions['擺盪指標 (Stochastic)'] = f"中性 ({stoch_k:.1f})"
         
+    if latest['Williams_%R'] < -80: opinions['威廉指標 (%R)'] = f"超賣 ({latest['Williams_%R']:.1f})"
+    elif latest['Williams_%R'] > -20: opinions['威廉指標 (%R)'] = f"超買 ({latest['Williams_%R']:.1f})"
+    else: opinions['威廉指標 (%R)'] = f"中性 ({latest['Williams_%R']:.1f})"
+        
+    if latest['MFI'] < 20: opinions['資金流量指標 (MFI)'] = f"資金超賣 ({latest['MFI']:.1f})"
+    elif latest['MFI'] > 80: opinions['資金流量指標 (MFI)'] = f"資金超買 ({latest['MFI']:.1f})"
+    else: opinions['資金流量指標 (MFI)'] = f"中性 ({latest['MFI']:.1f})"
+
     if inst_hold_pct:
         if inst_hold_pct > 0.5: opinions['籌碼面分析 (機構持股)'] = f"法人高度認同 ({inst_hold_pct:.1%})"
         else: opinions['籌碼面分析 (機構持股)'] = f"法人籌碼中性 ({inst_hold_pct:.1%})"
@@ -437,94 +436,57 @@ def create_multi_indicator_chart(df, symbol, period):
     
     return fig
 
-def update_search_input():
-    if st.session_state.symbol_select_box and st.session_state.symbol_select_box != "請選擇標的...":
-        code = st.session_state.symbol_select_box.split(' - ')[0]
-        st.session_state.sidebar_search_input = code
-        if st.session_state.get('last_search_symbol') != code:
-            st.session_state.last_search_symbol = code
-            st.session_state.analyze_trigger = True
-            
 # --- 3. Streamlit 主邏輯 (Main Function) ---
 
 def main():
     
     # (UPDATED v8.1) 將標題移至歡迎頁面邏輯之外
     if 'analysis_results' not in st.session_state or st.session_state['analysis_results'] is None:
-        st.markdown(
-              """
-              <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
-              """, 
-              unsafe_allow_html=True
-          )
+        st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
     
     st.sidebar.header("分析設定")
     st.sidebar.markdown("---")
-    st.sidebar.subheader("1. 選擇資產類別")
-    selected_category_key = st.sidebar.selectbox("選擇資產類別", list(CATEGORY_MAP.keys()), index=1, label_visibility="collapsed")
+    st.sidebar.subheader("1. 選擇或搜尋資產")
+    def on_change_callback(): st.session_state.manual_input = ""
+    selected_category = st.sidebar.selectbox("資產類別", list(CATEGORY_HOT_OPTIONS.keys()), on_change=on_change_callback, key="sb_category", label_visibility="collapsed")
+    selected_asset = st.sidebar.selectbox("熱門標的", list(CATEGORY_HOT_OPTIONS[selected_category].keys()), on_change=on_change_callback, key="sb_asset", label_visibility="collapsed")
+    manual_input = st.sidebar.text_input("或手動輸入代碼/名稱", placeholder="例如: 2330.TW, TSLA", key='manual_input', label_visibility="collapsed")
     
-    current_category_options_display = list(CATEGORY_HOT_OPTIONS.get(selected_category_key, {}).keys())
-    
-    current_symbol_code = st.session_state.get('last_search_symbol', "2330.TW")
-    default_symbol_index = 0
-    
-    try:
-        current_display_name = f"{current_symbol_code} - {FULL_SYMBOLS_MAP[current_symbol_code]['name']}"
-        if current_display_name in current_category_options_display:
-            default_symbol_index = current_category_options_display.index(current_display_name)
-    except:
-        pass
-
-    st.sidebar.selectbox(f"選擇 {selected_category_key} 標的", current_category_options_display, index=default_symbol_index, key="symbol_select_box", on_change=update_search_input, label_visibility="collapsed")
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("2. 🔍 **輸入股票代碼或中文名稱**")
-    text_input_current_value = st.session_state.get('sidebar_search_input', st.session_state.get('last_search_symbol', "2330.TW"))
-    selected_query = st.sidebar.text_input("輸入股票代碼或中文名稱", placeholder="例如：AAPL, 台積電, 廣達, BTC-USD", value=text_input_current_value, key="sidebar_search_input", label_visibility="collapsed")
-
-    final_symbol_to_analyze = get_symbol_from_query(selected_query)
-
-    is_symbol_changed = final_symbol_to_analyze != st.session_state.get('last_search_symbol', "INIT")
-
-    if is_symbol_changed:
-        if final_symbol_to_analyze and final_symbol_to_analyze != "---": 
-            st.session_state['analyze_trigger'] = True
-            st.session_state['last_search_symbol'] = final_symbol_to_analyze
-            st.session_state['data_ready'] = False
-
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("3. **選擇週期**")
-    period_keys = list(PERIOD_MAP.keys())
-    selected_period_key = st.sidebar.selectbox("分析時間週期", period_keys, index=period_keys.index("1 日")) 
-    yf_period, yf_interval = PERIOD_MAP[selected_period_key]
+    query = st.session_state.manual_input.strip() or CATEGORY_HOT_OPTIONS[selected_category][selected_asset]
+    final_symbol = get_symbol_from_query(query)
+    final_symbol_name = FULL_SYMBOLS_MAP.get(final_symbol, {}).get('name', final_symbol)
+    st.sidebar.info(f"當前目標: **{final_symbol} ({final_symbol_name})**")
     
     st.sidebar.markdown("---")
-    st.sidebar.subheader("4. **開始分析**")
-    analyze_button_clicked = st.sidebar.button("📊 執行AI分析", key="main_analyze_button") 
+    st.sidebar.subheader("2. 選擇週期")
+    selected_period_label = st.sidebar.selectbox("分析時間週期", list(PERIOD_MAP.keys()), index=2, label_visibility="collapsed")
+    period, interval = PERIOD_MAP[selected_period_label]
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("3. 開始分析")
+    start_analysis = st.sidebar.button("📊 執行AI分析", use_container_width=True)
 
     # --- 主畫面顯示 ---
     if 'analysis_results' not in st.session_state:
         st.session_state['analysis_results'] = None
 
-    if analyze_button_clicked or st.session_state.get('analyze_trigger', False):
-        st.session_state['analyze_trigger'] = False 
-        
+    if start_analysis:
         with st.spinner(f'AI 分析引擎啟動中...'):
-            data = get_data(final_symbol_to_analyze, yf_period, yf_interval)
+            data = get_data(final_symbol, period, interval)
             if data is not None and len(data) > 50:
                 df = calculate_indicators(data.copy())
                 if not df.empty:
-                    funda = get_fundamental_data(final_symbol_to_analyze)
+                    funda = get_fundamental_data(final_symbol)
                     st.session_state['analysis_results'] = {
                         'df': df,
                         'funda_scores': calculate_fundamental_scores(funda['info']),
                         'inst_hold_pct': funda['info'].get('heldPercentInstitutions'),
-                        'final_symbol': final_symbol_to_analyze,
-                        'final_symbol_name': get_company_info(final_symbol_to_analyze)['name'],
-                        'period_label': selected_period_key,
+                        'final_symbol': final_symbol,
+                        'final_symbol_name': final_symbol_name,
+                        'period_label': selected_period_label,
                     }
                 else: st.session_state['analysis_results'] = {'error': '數據不足以計算指標'}
-            else: st.session_state['analysis_results'] = {'error': f"數據不足或代碼 '{final_symbol_to_analyze}' 無效"}
+            else: st.session_state['analysis_results'] = {'error': f"數據不足或代碼 '{final_symbol}' 無效"}
 
     if st.session_state['analysis_results']:
         if 'error' in st.session_state['analysis_results']:
@@ -543,6 +505,13 @@ def main():
             price_change = risk['entry'] - df['Close'].iloc[-2]
             price_change_pct = (price_change / df['Close'].iloc[-2]) * 100
 
+            short_action_text = signal['action'].split(" ")[0]
+            action_style = ""
+            if short_action_text == "觀望": action_style = 'style="color: #FA8072; font-weight: bold;"'
+            elif "買" in short_action_text: action_style = 'class="positive"'
+            elif "賣" in short_action_text: action_style = 'class="negative"'
+            else: action_style = 'class="neutral"'
+
             action_text = signal['action']
             action_text_class = 'neutral'
             if '買' in action_text: action_text_class = 'positive'
@@ -550,18 +519,36 @@ def main():
 
             st.subheader(f"分析週期: {period_label} | 基本面診斷: {funda_scores['display_score']}/9 ({funda_scores['message']})")
             st.markdown("---")
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("💰 當前價格", f"{risk['entry']:,.2f}", f"{price_change:+.2f} ({price_change_pct:+.2f}%)")
-            with col2:
-                st.markdown("**🎯 最終行動建議**")
-                st.markdown(f"<p class='{action_text_class}' style='font-size: 20px;'>{signal['action']}</p>", unsafe_allow_html=True)
-            col3.metric("🔥 總量化評分", f"{signal['total_score']:.2f}")
-            col4.metric("🛡️ 信心指數", f"{signal['confidence']}%")
+            st.markdown("<h3>💡 核心行動與量化評分</h3>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="metric-container">
+                <div class="metric-card"><div class="metric-label">💰 當前價格</div><div class="metric-value">{risk['entry']:,.2f} <span class="metric-delta {'positive' if price_change >= 0 else 'negative'}">{price_change:+.2f} ({price_change_pct:+.2f}%)</span></div></div>
+                <div class="metric-card"><div class="metric-label">🎯 最終行動建議</div><div class="metric-value"><span class='{action_text_class}'>{signal['action']}</span></div></div>
+                <div class="metric-card"><div class="metric-label">🔥 總量化評分</div><div class="metric-value">{signal['total_score']:.2f}</div></div>
+                <div class="metric-card"><div class="metric-label">🛡️ 信心指數</div><div class="metric-value">{signal['confidence']}%</div></div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            st.markdown("---")
+            st.markdown("<h3>🛡️ 精確交易策略與風險控制</h3>", unsafe_allow_html=True)
+            currency_symbol = "NT$" if final_symbol.endswith(".TW") else "$"
+            entry_buffer = risk['atr'] * 0.2
+            strategy_text = f"基於{signal['action']}信號，建議在 {currency_symbol}{risk['entry']:.2f} (± {entry_buffer:.4f}) 範圍內尋找支撐或等待回調進場。"
+            st.markdown(f"""
+            <div class="metric-container">
+                <div class="metric-card"><div class="metric-label">建議操作</div><div class="metric-value"><span {action_style}>{short_action_text}</span></div></div>
+                <div class="metric-card"><div class="metric-label">建議入場價</div><div class="metric-value"><span style="color: #FA8072; font-weight: bold;">~{risk['entry']:,.2f}</span></div></div>
+                <div class="metric-card"><div class="metric-label">🚀 止盈價 (TP)</div><div class="metric-value"><span class="positive">{risk['tp']:,.2f}</span></div></div>
+                <div class="metric-card"><div class="metric-label">🛑 止損價 (SL)</div><div class="metric-value"><span class="negative">{risk['sl']:,.2f}</span></div></div>
+            </div>
+            <div class="strategy-summary">
+            💡 <b>策略總結:</b> {strategy_text} | ⚖️ <b>風險/回報比 (R:R):</b> 2.00 | 波動單位 (ATR): {risk['atr']:.4f}
+            </div>
+            """, unsafe_allow_html=True)
+
             st.markdown("<h3>🧠 關鍵技術指標</h3>", unsafe_allow_html=True)
             ai_df = pd.DataFrame(signal['opinions'].items(), columns=['AI領域', '判斷結果'])
-            
+            ai_df['判斷結果'] = ai_df['判斷結果'] + f" (總分: {signal['total_score']:.2f})"
+
             def style_expert_opinion(s):
                 is_positive = s.str.contains('買|多頭|強化|反彈|黃金交叉|強勢|流入|認同|上升', case=False)
                 is_negative = s.str.contains('賣|空頭|削弱|回調|死亡交叉|過熱|流出|下降', case=False)
@@ -571,7 +558,19 @@ def main():
             styled_ai_df = ai_df.style.apply(style_expert_opinion, subset=['判斷結果'], axis=0)
             st.dataframe(styled_ai_df, use_container_width=True)
 
-            st.markdown("---")
+            st.markdown("<h3>🛠️ 技術指標狀態表</h3>", unsafe_allow_html=True)
+            technical_df = get_technical_data_df(df, signal['total_score'])
+            
+            def style_indicator_table(df_to_style):
+                def style_logic(s):
+                    is_positive = s.str.contains('強化|多頭|流入|突破|之上|向上', case=False)
+                    is_negative = s.str.contains('警告|空頭|流出|跌破|之下|向下', case=False)
+                    colors = np.select([is_negative, is_positive], ['color: #28a745;', 'color: #dc3545;'], default='color: #FA8072;')
+                    return [f'{c}' for c in colors]
+                return df_to_style.style.apply(style_logic, subset=['分析結論'], axis=0)
+
+            st.dataframe(style_indicator_table(technical_df[['最新值', '分析結論']]), use_container_width=True)
+            
             st.markdown("<h3>🧪 策略回測報告</h3>", unsafe_allow_html=True)
             if backtest and backtest.get("total_trades", 0) > 0:
                 col1, col2, col3, col4 = st.columns(4)
@@ -592,6 +591,7 @@ def main():
             st.plotly_chart(fig_professional, use_container_width=True)
 
     else:
+        # (UPDATED v8.1) 優化歡迎頁面
         st.markdown(
               """
               <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
@@ -606,22 +606,9 @@ def main():
         st.markdown("3. **選擇週期**：決定分析的長度（例如：`30 分`、`4 小時`、`1 日`、`1 周`）。")
         st.markdown(f"4. **執行分析**：點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span>，AI將融合基本面與技術面指標提供交易策略。", unsafe_allow_html=True)
         st.markdown("---")
-        st.markdown("⚠️ **綜合風險與免責聲明 (Risk & Disclaimer)**", unsafe_allow_html=True)
-        st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
-        st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
-        st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** AI")
+        st.info("⚠️ **免責聲明:** 本分析僅供參考，不構成任何投資建議。所有交易決策應基於您個人的獨立研究。")
 
 
 if __name__ == '__main__':
-    # 初始化 session state
-    if 'last_search_symbol' not in st.session_state:
-        st.session_state['last_search_symbol'] = "2330.TW"
-    if 'data_ready' not in st.session_state:
-        st.session_state['data_ready'] = False
-    if 'sidebar_search_input' not in st.session_state:
-        st.session_state['sidebar_search_input'] = "2330.TW"
-    if 'analyze_trigger' not in st.session_state:
-        st.session_state['analyze_trigger'] = False
-        
     main()
 
