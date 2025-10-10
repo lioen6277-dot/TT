@@ -575,3 +575,4 @@ else:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
+
