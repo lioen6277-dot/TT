@@ -1,12 +1,13 @@
-import re
-import warnings
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-import ta
 import yfinance as yf
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import ta
+import warnings
+import time
+import re 
 from datetime import datetime, timedelta
 
 warnings.filterwarnings('ignore')
@@ -16,218 +17,99 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="AI趨勢分析📈",
-    page_icon="🚀",
+    page_title="AI趨勢分析📈", 
+    page_icon="🚀", 
     layout="wide"
 )
 
 # 週期映射：(YFinance Period, YFinance Interval)
-PERIOD_MAP = {
-    "30 分": ("60d", "30m"),
-    "4 小時": ("1y", "60m"),
-    "1 日": ("5y", "1d"),
+PERIOD_MAP = { 
+    "30 分": ("60d", "30m"), 
+    "4 小時": ("1y", "60m"), 
+    "1 日": ("5y", "1d"), 
     "1 週": ("max", "1wk")
 }
 
-# 🚀 您的【所有資產清單】(整合所有版本)
+# 🚀 您的【所有資產清單】
 FULL_SYMBOLS_MAP = {
-    # 美股/ETF/指數
-    "ACN": {"name": "Accenture (埃森哲)", "keywords": ["Accenture", "ACN", "諮詢", "科技服務"]},
+    # ----------------------------------------------------
+    # A. 美股核心 (US Stocks) - 個股 & ETF（以代碼英文排序）
+    # ----------------------------------------------------
+    "AAPL": {"name": "蘋果", "keywords": ["蘋果", "Apple", "AAPL"]},
     "ADBE": {"name": "Adobe", "keywords": ["Adobe", "ADBE"]},
-    "AAPL": {"name": "蘋果 (Apple)", "keywords": ["蘋果", "Apple", "AAPL"]},
-    "AMD": {"name": "超微 (Advanced Micro Devices)", "keywords": ["超微", "AMD", "半導體"]},
-    "AMZN": {"name": "亞馬遜 (Amazon)", "keywords": ["亞馬遜", "Amazon", "AMZN", "電商"]},
-    "ARKG": {"name": "方舟基因體革命ETF (ARK Genomic)", "keywords": ["ARKG", "基因科技", "生物科技ETF"]},
-    "ARKK": {"name": "方舟創新ETF (ARK Innovation)", "keywords": ["ARKK", "CathieWood", "創新ETF", "木頭姐"]},
-    "BA": {"name": "波音 (Boeing)", "keywords": ["波音", "Boeing", "BA", "工業股", "航太"]},
-    "BAC": {"name": "美國銀行 (Bank of America)", "keywords": ["美國銀行", "BankOfAmerica", "BAC", "金融股"]},
-    "BND": {"name": "Vanguard總體債券市場ETF", "keywords": ["BND", "總體債券", "債券ETF"]},
-    "BRK-B": {"name": "波克夏海瑟威 B (Berkshire Hathaway)", "keywords": ["波克夏", "巴菲特", "BRKB", "保險", "投資"]},
-    "CAT": {"name": "開拓重工 (Caterpillar)", "keywords": ["開拓重工", "Caterpillar", "CAT"]},
-    "CVX": {"name": "雪佛龍 (Chevron)", "keywords": ["雪佛龍", "Chevron", "CVX", "能源股", "石油"]},
-    "KO": {"name": "可口可樂 (Coca-Cola)", "keywords": ["可口可樂", "CocaCola", "KO"]},
-    "COST": {"name": "好市多 (Costco)", "keywords": ["好市多", "Costco", "COST"]},
-    "CRM": {"name": "Salesforce", "keywords": ["Salesforce", "CRM", "雲端", "SaaS"]},
-    "DE": {"name": "迪爾公司 (Deere & Co.)", "keywords": ["迪爾", "Deere", "DE", "農業機械"]},
-    "DIA": {"name": "SPDR 道瓊工業ETF (Dow Jones ETF)", "keywords": ["DIA", "道瓊ETF"]},
-    "DIS": {"name": "迪士尼 (Disney)", "keywords": ["迪士尼", "Disney", "DIS", "媒體", "娛樂"]},
-    "^DJI": {"name": "道瓊工業指數 (Dow Jones Industrial Average)", "keywords": ["道瓊", "DowJones", "^DJI", "指數"]},
-    "DXY": {"name": "美元指數 (Dollar Index)", "keywords": ["美元指數", "DXY", "外匯", "USD"]},
-    "EEM": {"name": "iShares 新興市場ETF (Emerging Markets)", "keywords": ["EEM", "新興市場", "新興市場ETF"]},
-    "XOM": {"name": "埃克森美孚 (ExxonMobil)", "keywords": ["埃克森美孚", "ExxonMobil", "XOM", "能源股"]},
-    "^FTSE": {"name": "富時100指數 (FTSE 100)", "keywords": ["富時", "倫敦股市", "^FTSE", "指數"]},
-    "FUTY": {"name": "富時公用事業ETF (Utilities ETF)", "keywords": ["FUTY", "公用事業", "防禦股"]},
-    "^GDAXI": {"name": "德國DAX指數", "keywords": ["DAX", "德國股市", "^GDAXI", "指數"]},
-    "GLD": {"name": "SPDR黃金ETF (Gold ETF)", "keywords": ["GLD", "黃金ETF", "避險資產"]},
-    "GOOG": {"name": "谷歌/Alphabet C股 (Google C)", "keywords": ["谷歌C", "Alphabet C", "GOOG"]},
-    "GOOGL": {"name": "谷歌/Alphabet A股 (Google A)", "keywords": ["谷歌", "Alphabet", "GOOGL", "GOOG"]},
-    "^GSPC": {"name": "S&P 500 指數", "keywords": ["標普", "S&P500", "^GSPC", "SPX", "指數"]},
-    "GS": {"name": "高盛集團 (Goldman Sachs)", "keywords": ["高盛", "GoldmanSachs", "GS", "投行", "金融股"]},
-    "HD": {"name": "家得寶 (Home Depot)", "keywords": ["家得寶", "HomeDepot", "HD"]},
-    "INTC": {"name": "英特爾 (Intel)", "keywords": ["英特爾", "Intel", "INTC", "半導體"]},
-    "IJR": {"name": "iShares 核心標普小型股ETF (Small Cap)", "keywords": ["IJR", "小型股ETF", "Russell2000"]},
-    "IYR": {"name": "iShares 美國房地產ETF (Real Estate)", "keywords": ["IYR", "房地產ETF", "REITs"]},
-    "JNJ": {"name": "嬌生 (Johnson & Johnson)", "keywords": ["嬌生", "Johnson&Johnson", "JNJ", "醫療保健"]},
-    "JPM": {"name": "摩根大通 (JPMorgan Chase)", "keywords": ["摩根大通", "JPMorgan", "JPM", "金融股"]},
-    "LLY": {"name": "禮來 (Eli Lilly)", "keywords": ["禮來", "EliLilly", "LLY", "製藥"]},
-    "LMT": {"name": "洛克希德·馬丁 (Lockheed Martin)", "keywords": ["洛克希德馬丁", "LMT", "軍工", "國防"]},
-    "LULU": {"name": "Lululemon", "keywords": ["Lululemon", "LULU", "運動服飾", "消費股"]},
-    "MA": {"name": "萬事達卡 (Mastercard)", "keywords": ["萬事達卡", "Mastercard", "MA", "支付"]},
-    "MCD": {"name": "麥當勞 (McDonald's)", "keywords": ["麥當勞", "McDonalds", "MCD"]},
-    "META": {"name": "Meta/臉書 (Facebook)", "keywords": ["臉書", "Meta", "FB", "META", "Facebook"]},
-    "MGM": {"name": "美高梅國際酒店集團 (MGM Resorts)", "keywords": ["美高梅", "MGM", "娛樂", "博彩"]},
-    "MSFT": {"name": "微軟 (Microsoft)", "keywords": ["微軟", "Microsoft", "MSFT", "雲端", "AI"]},
-    "MS": {"name": "摩根士丹利 (Morgan Stanley)", "keywords": ["摩根士丹利", "MorganStanley", "MS", "投行"]},
-    "MRNA": {"name": "莫德納 (Moderna)", "keywords": ["莫德納", "Moderna", "MRNA", "生物科技", "疫苗"]},
-    "MSCI": {"name": "MSCI ACWI ETF", "keywords": ["MSCI", "全球股票ETF"]},
-    "^IXIC": {"name": "NASDAQ 綜合指數", "keywords": ["納斯達克", "NASDAQ", "^IXIC", "指數", "科技股"]},
-    "^N225": {"name": "日經225指數 (Nikkei 225)", "keywords": ["日經", "Nikkei", "^N225", "日本股市", "指數"]},
-    "NFLX": {"name": "網飛 (Netflix)", "keywords": ["網飛", "Netflix", "NFLX"]},
-    "NKE": {"name": "耐克 (Nike)", "keywords": ["耐克", "Nike", "NKE", "運動用品"]},
-    "NOW": {"name": "ServiceNow", "keywords": ["ServiceNow", "NOW", "SaaS", "企業軟體"]},
-    "NVDA": {"name": "輝達 (Nvidia)", "keywords": ["輝達", "英偉達", "AI", "NVDA", "Nvidia", "GPU", "半導體"]},
-    "ORCL": {"name": "甲骨文 (Oracle)", "keywords": ["甲骨文", "Oracle", "ORCL"]},
-    "PEP": {"name": "百事 (PepsiCo)", "keywords": ["百事", "Pepsi", "PEP"]},
-    "PFE": {"name": "輝瑞 (Pfizer)", "keywords": ["輝瑞", "Pfizer", "PFE", "製藥", "疫苗"]},
-    "PG": {"name": "寶潔 (Procter & Gamble)", "keywords": ["寶潔", "P&G", "PG"]},
-    "PYPL": {"name": "PayPal", "keywords": ["PayPal", "PYPL", "金融科技", "Fintech"]},
-    "QCOM": {"name": "高通 (Qualcomm)", "keywords": ["高通", "Qualcomm", "QCOM", "半導體"]},
-    "QQQM": {"name": "Invesco NASDAQ 100 ETF (低費率)", "keywords": ["QQQM", "納斯達克ETF", "科技股ETF"]},
-    "QQQ": {"name": "Invesco QQQ Trust", "keywords": ["QQQ", "納斯達克ETF", "科技股ETF"]},
-    "RTX": {"name": "雷神技術 (Raytheon Technologies)", "keywords": ["雷神", "Raytheon", "RTX", "軍工", "航太國防"]},
-    "SCHD": {"name": "Schwab美國高股息ETF (High Dividend)", "keywords": ["SCHD", "高股息ETF", "美股派息"]},
-    "SBUX": {"name": "星巴克 (Starbucks)", "keywords": ["星巴克", "Starbucks", "SBUX", "消費股"]},
-    "SIRI": {"name": "Sirius XM", "keywords": ["SiriusXM", "SIRI", "媒體", "廣播"]},
-    "SMH": {"name": "VanEck Vectors半導體ETF", "keywords": ["SMH", "半導體ETF", "晶片股"]},
+    "AMD": {"name": "超微", "keywords": ["超微", "AMD"]},
+    "AMZN": {"name": "亞馬遜", "keywords": ["亞馬遜", "Amazon", "AMZN"]},
+    "CAT": {"name": "開拓重工", "keywords": ["開拓重工", "Caterpillar", "CAT"]},
+    "COST": {"name": "好市多", "keywords": ["好市多", "Costco", "COST"]},
+    "CRM": {"name": "Salesforce", "keywords": ["Salesforce", "CRM"]},
+    "GOOGL": {"name": "谷歌/Alphabet", "keywords": ["谷歌", "Alphabet", "GOOGL", "GOOG"]},
+    "HD": {"name": "家得寶", "keywords": ["家得寶", "HomeDepot", "HD"]},
+    "INTC": {"name": "英特爾", "keywords": ["英特爾", "Intel", "INTC"]},
+    "JPM": {"name": "摩根大通", "keywords": ["摩根大通", "JPMorgan", "JPM"]},
+    "KO": {"name": "可口可樂", "keywords": ["可口可樂", "CocaCola", "KO"]},
+    "LLY": {"name": "禮來", "keywords": ["禮來", "EliLilly", "LLY"]},
+    "MCD": {"name": "麥當勞", "keywords": ["麥當勞", "McDonalds", "MCD"]},
+    "META": {"name": "Meta/臉書", "keywords": ["臉書", "Meta", "FB", "META"]},
+    "MSFT": {"name": "微軟", "keywords": ["微軟", "Microsoft", "MSFT"]},
+    "NFLX": {"name": "網飛", "keywords": ["網飛", "Netflix", "NFLX"]},
+    "NVDA": {"name": "輝達", "keywords": ["輝達", "英偉達", "AI", "NVDA", "Nvidia"]},
+    "ORCL": {"name": "甲骨文", "keywords": ["甲骨文", "Oracle", "ORCL"]},
+    "PEP": {"name": "百事", "keywords": ["百事", "Pepsi", "PEP"]},
+    "PG": {"name": "寶潔", "keywords": ["寶潔", "P&G", "PG"]},
+    "QCOM": {"name": "高通", "keywords": ["高通", "Qualcomm", "QCOM"]},
     "SPY": {"name": "SPDR 標普500 ETF", "keywords": ["SPY", "標普ETF"]},
-    "TLT": {"name": "iShares 20年期以上公債ETF (Treasury Bond)", "keywords": ["TLT", "美債", "公債ETF"]},
-    "TSLA": {"name": "特斯拉 (Tesla)", "keywords": ["特斯拉", "電動車", "TSLA", "Tesla"]},
-    "UNH": {"name": "聯合健康 (UnitedHealth Group)", "keywords": ["聯合健康", "UNH", "醫療保健"]},
-    "USO": {"name": "美國石油基金ETF (Oil Fund)", "keywords": ["USO", "石油ETF", "原油"]},
+    "QQQ": {"name": "Invesco QQQ Trust", "keywords": ["QQQ", "納斯達克ETF"]},
+    "TSLA": {"name": "特斯拉", "keywords": ["特斯拉", "電動車", "TSLA", "Tesla"]},
+    "UNH": {"name": "聯合健康", "keywords": ["聯合健康", "UNH"]},
     "V": {"name": "Visa", "keywords": ["Visa", "V"]},
-    "VGT": {"name": "Vanguard資訊科技ETF (Tech ETF)", "keywords": ["VGT", "科技ETF", "資訊科技"]},
-    "^VIX": {"name": "恐慌指數 (VIX)", "keywords": ["VIX", "恐慌指數", "波動率指數"]},
-    "VNQ": {"name": "Vanguard房地產ETF (Real Estate)", "keywords": ["VNQ", "房地產ETF", "REITs"]},
     "VOO": {"name": "Vanguard 標普500 ETF", "keywords": ["VOO", "Vanguard"]},
-    "VTI": {"name": "Vanguard整體股市ETF (Total Market)", "keywords": ["VTI", "整體股市", "TotalMarket"]},
-    "VZ": {"name": "威瑞森 (Verizon)", "keywords": ["威瑞森", "Verizon", "VZ", "電信股"]},
-    "WBA": {"name": "沃爾格林 (Walgreens Boots Alliance)", "keywords": ["沃爾格林", "Walgreens", "WBA", "藥品零售"]},
-    "WFC": {"name": "富國銀行 (Wells Fargo)", "keywords": ["富國銀行", "WellsFargo", "WFC", "金融股"]},
-    "WMT": {"name": "沃爾瑪 (Walmart)", "keywords": ["沃爾瑪", "Walmart", "WMT"]},
-    # 台股/ETF/指數
-    "0050.TW": {"name": "元大台灣50", "keywords": ["台灣50", "0050", "台灣五十", "ETF"]},
-    "0051.TW": {"name": "元大中型100", "keywords": ["中型100", "0051", "ETF"]},
-    "0055.TW": {"name": "元大MSCI金融", "keywords": ["元大金融", "0055", "金融股ETF"]},
-    "0056.TW": {"name": "元大高股息", "keywords": ["高股息", "0056", "ETF"]},
-    "006208.TW": {"name": "富邦台50", "keywords": ["富邦台50", "006208", "台灣五十ETF"]},
-    "00679B.TW": {"name": "元大美債20年", "keywords": ["00679B", "美債ETF", "債券ETF"]},
-    "00687B.TW": {"name": "國泰20年美債", "keywords": ["00687B", "美債ETF", "債券ETF"]},
-    "00713.TW": {"name": "元大台灣高息低波", "keywords": ["00713", "高息低波", "ETF"]},
-    "00878.TW": {"name": "國泰永續高股息", "keywords": ["00878", "國泰永續", "ETF"]},
-    "00888.TW": {"name": "永豐台灣ESG", "keywords": ["00888", "ESG", "ETF"]},
-    "00891.TW": {"name": "富邦特選高股息30", "keywords": ["00891", "高股息30", "ETF"]},
-    "00919.TW": {"name": "群益台灣精選高股息", "keywords": ["00919", "群益高股息", "ETF"]},
-    "00929.TW": {"name": "復華台灣科技優息", "keywords": ["00929", "科技優息", "月配息", "ETF"]},
-    "00939.TW": {"name": "統一台灣高息動能", "keywords": ["00939", "高息動能", "ETF"]},
-    "00940.TW": {"name": "元大臺灣價值高息", "keywords": ["00940", "臺灣價值高息", "ETF"]},
+    "WMT": {"name": "沃爾瑪", "keywords": ["沃爾瑪", "Walmart", "WMT"]},
+    "^DJI": {"name": "道瓊工業指數", "keywords": ["道瓊", "DowJones", "^DJI"]},
+    "^GSPC": {"name": "S&P 500 指數", "keywords": ["標普", "S&P500", "^GSPC", "SPX"]},
+    "^IXIC": {"name": "NASDAQ 綜合指數", "keywords": ["納斯達克", "NASDAQ", "^IXIC"]},
+
+    # ----------------------------------------------------
+    # B. 台灣市場 (TW Stocks/ETFs/Indices) - 依代碼數字排序
+    # ----------------------------------------------------
+    "0050.TW": {"name": "元大台灣50", "keywords": ["台灣50", "0050", "台灣五十"]},
+    "0056.TW": {"name": "元大高股息", "keywords": ["高股息", "0056"]},
+    "00878.TW": {"name": "國泰永續高股息", "keywords": ["00878", "國泰永續"]},
     "1101.TW": {"name": "台泥", "keywords": ["台泥", "1101"]},
-    "1216.TW": {"name": "統一", "keywords": ["統一", "1216", "食品股", "集團股"]},
-    "1301.TW": {"name": "台塑", "keywords": ["台塑", "1301", "塑化股"]},
-    "1303.TW": {"name": "南亞", "keywords": ["南亞", "1303", "台塑集團"]},
-    "1504.TW": {"name": "東元", "keywords": ["東元", "1504", "電機", "重電"]},
-    "1710.TW": {"name": "東聯", "keywords": ["東聯", "1710", "塑化", "遠東集團"]},
-    "2002.TW": {"name": "中鋼", "keywords": ["中鋼", "2002", "鋼鐵"]},
-    "2201.TW": {"name": "裕隆", "keywords": ["裕隆", "2201", "汽車", "電動車"]},
-    "2301.TW": {"name": "光寶科", "keywords": ["光寶科", "2301", "電源供應器", "光電"]},
-    "2303.TW": {"name": "聯電", "keywords": ["聯電", "2303", "UMC", "晶圓", "半導體"]},
+    "1301.TW": {"name": "台塑", "keywords": ["台塑", "1301"]},
     "2308.TW": {"name": "台達電", "keywords": ["台達電", "2308", "Delta"]},
     "2317.TW": {"name": "鴻海", "keywords": ["鴻海", "2317", "Foxconn"]},
-    "2327.TW": {"name": "國巨", "keywords": ["國巨", "2327", "被動元件"]},
-    "2330.TW": {"name": "台積電", "keywords": ["台積電", "2330", "TSMC", "晶圓", "半導體"]},
-    "2344.TW": {"name": "華邦電", "keywords": ["華邦電", "2344", "DRAM", "Flash", "記憶體"]},
-    "2345.TW": {"name": "智邦", "keywords": ["智邦", "2345", "網通設備", "交換器"]},
-    "2353.TW": {"name": "宏碁", "keywords": ["宏碁", "2353", "Acer", "PC"]},
+    "2330.TW": {"name": "台積電", "keywords": ["台積電", "2330", "TSMC"]},
     "2357.TW": {"name": "華碩", "keywords": ["華碩", "2357"]},
-    "2379.TW": {"name": "瑞昱", "keywords": ["瑞昱", "2379", "RTL"]},
-    "2382.TW": {"name": "廣達", "keywords": ["廣達", "2382", "AI伺服器"]},
-    "2408.TW": {"name": "南亞科", "keywords": ["南亞科", "2408", "DRAM"]},
-    "2409.TW": {"name": "友達", "keywords": ["友達", "2409", "面板股", "顯示器"]},
+    "2379.TW": {"name": "瑞昱", "keywords": ["瑞昱", "2379"]},
+    "2382.TW": {"name": "廣達", "keywords": ["廣達", "2382"]},
     "2454.TW": {"name": "聯發科", "keywords": ["聯發科", "2454", "MediaTek"]},
-    "2455.TW": {"name": "全新", "keywords": ["全新", "2455", "砷化鎵", "PA"]},
-    "2474.TW": {"name": "可成", "keywords": ["可成", "2474", "金屬機殼"]},
-    "2498.TW": {"name": "宏達電", "keywords": ["宏達電", "2498", "HTC", "VR", "元宇宙"]},
     "2603.TW": {"name": "長榮", "keywords": ["長榮", "2603", "航運"]},
     "2609.TW": {"name": "陽明", "keywords": ["陽明", "2609", "航運"]},
     "2615.TW": {"name": "萬海", "keywords": ["萬海", "2615", "航運"]},
-    "2834.TW": {"name": "臺企銀", "keywords": ["臺企銀", "2834", "金融股", "公股"]},
-    "2880.TW": {"name": "華南金", "keywords": ["華南金", "2880", "金融股"]},
-    "2881.TW": {"name": "富邦金", "keywords": ["富邦金", "2881", "金融股"]},
-    "2882.TW": {"name": "國泰金", "keywords": ["國泰金", "2882", "金融股"]},
-    "2884.TW": {"name": "玉山金", "keywords": ["玉山金", "2884", "金融股"]},
-    "2886.TW": {"name": "兆豐金", "keywords": ["兆豐金", "2886", "金融股"]},
-    "2890.TW": {"name": "永豐金", "keywords": ["永豐金", "2890", "金融股"]},
-    "2891.TW": {"name": "中信金", "keywords": ["中信金", "2891", "金融股"]},
-    "2892.TW": {"name": "第一金", "keywords": ["第一金", "2892", "金融股", "公股銀行"]},
-    "3008.TW": {"name": "大立光", "keywords": ["大立光", "3008", "光學鏡頭"]},
+    "2881.TW": {"name": "富邦金", "keywords": ["富邦金", "2881"]},
+    "2882.TW": {"name": "國泰金", "keywords": ["國泰金", "2882"]},
+    "2891.TW": {"name": "中信金", "keywords": ["中信金", "2891"]},
     "3017.TW": {"name": "奇鋐", "keywords": ["奇鋐", "3017", "散熱"]},
-    "3037.TW": {"name": "欣興", "keywords": ["欣興", "3037", "ABF載板", "PCB"]},
-    "3231.TW": {"name": "緯創", "keywords": ["緯創", "3231", "AI伺服器"]},
-    "3711.TW": {"name": "日月光投控", "keywords": ["日月光", "3711", "封裝測試", "半導體後段"]},
-    "4938.TW": {"name": "和碩", "keywords": ["和碩", "4938", "代工", "電子組裝"]},
-    "5880.TW": {"name": "合庫金", "keywords": ["合庫金", "5880", "金融股"]},
-    "6239.TW": {"name": "力積電", "keywords": ["力積電", "6239", "DRAM", "晶圓代工"]},
-    "6415.TW": {"name": "創意", "keywords": ["M31", "創意電子", "6415", "IP"]},
-    "6669.TW": {"name": "緯穎", "keywords": ["緯穎", "6669", "AI伺服器", "資料中心"]},
-    "^TWII": {"name": "台股指數", "keywords": ["台股指數", "加權指數", "^TWII", "指數"]},
-    # 加密貨幣
-    "AAVE-USD": {"name": "Aave", "keywords": ["Aave", "AAVE", "DeFi", "借貸協議"]},
+    "3231.TW": {"name": "緯創", "keywords": ["緯創", "3231"]},
+    "^TWII": {"name": "台股指數", "keywords": ["台股指數", "加權指數", "^TWII"]},
+
+    # ----------------------------------------------------
+    # C. 加密貨幣 (Crypto) - 以英文名稱排序
+    # ----------------------------------------------------
     "ADA-USD": {"name": "Cardano", "keywords": ["Cardano", "ADA", "ADA-USDT"]},
-    "ALGO-USD": {"name": "Algorand", "keywords": ["Algorand", "ALGO", "公鏈"]},
-    "APT-USD": {"name": "Aptos", "keywords": ["Aptos", "APT", "Layer1", "公鏈"]},
-    "ARB-USD": {"name": "Arbitrum", "keywords": ["Arbitrum", "ARB", "Layer2", "擴容"]},
-    "ATOM-USD": {"name": "Cosmos", "keywords": ["Cosmos", "ATOM", "跨鏈"]},
+    "ASTER-USD": {"name": "Aster", "keywords": ["Aster", "ASTER-USD"]},
     "AVAX-USD": {"name": "Avalanche", "keywords": ["Avalanche", "AVAX", "AVAX-USDT"]},
-    "AXS-USD": {"name": "Axie Infinity", "keywords": ["Axie", "AXS", "GameFi", "遊戲"]},
-    "BCH-USD": {"name": "比特幣現金 (Bitcoin Cash)", "keywords": ["比特幣現金", "BCH"]},
-    "BNB-USD": {"name": "幣安幣 (Binance Coin)", "keywords": ["幣安幣", "BNB", "BNB-USDT", "交易所幣"]},
-    "BTC-USD": {"name": "比特幣 (Bitcoin)", "keywords": ["比特幣", "BTC", "bitcoin", "BTC-USDT", "加密貨幣之王"]},
-    "DAI-USD": {"name": "Dai", "keywords": ["Dai", "DAI", "穩定幣", "MakerDAO"]},
-    "DOGE-USD": {"name": "狗狗幣 (Dogecoin)", "keywords": ["狗狗幣", "DOGE", "DOGE-USDT", "迷因幣"]},
+    "BNB-USD": {"name": "幣安幣", "keywords": ["幣安幣", "BNB", "BNB-USDT"]},
+    "BTC-USD": {"name": "比特幣", "keywords": ["比特幣", "BTC", "bitcoin", "BTC-USDT"]},
+    "DOGE-USD": {"name": "狗狗幣", "keywords": ["狗狗幣", "DOGE", "DOGE-USDT"]},
     "DOT-USD": {"name": "Polkadot", "keywords": ["Polkadot", "DOT", "DOT-USDT"]},
-    "ETC-USD": {"name": "以太坊經典 (Ethereum Classic)", "keywords": ["以太坊經典", "ETC", "EthereumClassic"]},
-    "ETH-USD": {"name": "以太坊 (Ethereum)", "keywords": ["以太坊", "ETH", "ethereum", "ETH-USDT", "智能合約"]},
-    "FIL-USD": {"name": "Filecoin", "keywords": ["Filecoin", "FIL", "去中心化儲存"]},
-    "FTM-USD": {"name": "Fantom", "keywords": ["Fantom", "FTM", "公鏈"]},
-    "HBAR-USD": {"name": "Hedera", "keywords": ["Hedera", "HBAR", "分散式帳本"]},
-    "ICP-USD": {"name": "Internet Computer", "keywords": ["ICP", "網際網路電腦"]},
-    "IMX-USD": {"name": "ImmutableX", "keywords": ["ImmutableX", "IMX", "GameFi", "NFT L2"]},
-    "INJ-USD": {"name": "Injective Protocol", "keywords": ["Injective", "INJ", "DeFi", "去中心化交易"]},
-    "LDO-USD": {"name": "Lido DAO", "keywords": ["Lido", "LDO", "ETH質押", "DeFi"]},
-    "LINK-USD": {"name": "Chainlink", "keywords": ["Chainlink", "LINK", "LINK-USDT", "預言機"]},
-    "LTC-USD": {"name": "萊特幣 (Litecoin)", "keywords": ["萊特幣", "LTC", "數位白銀"]},
-    "LUNA1-USD": {"name": "Terra 2.0 (LUNA)", "keywords": ["LUNA", "Terra 2.0"]},
-    "MANA-USD": {"name": "Decentraland", "keywords": ["Decentraland", "MANA", "元宇宙", "虛擬土地"]},
-    "MATIC-USD": {"name": "Polygon", "keywords": ["Polygon", "MATIC", "Layer2", "側鏈"]},
-    "MKR-USD": {"name": "Maker", "keywords": ["Maker", "MKR", "DAI發行", "DeFi"]},
-    "NEAR-USD": {"name": "Near Protocol", "keywords": ["Near", "NEAR", "公鏈"]},
-    "OP-USD": {"name": "Optimism", "keywords": ["Optimism", "OP", "Layer2", "擴容"]},
-    "SAND-USD": {"name": "The Sandbox", "keywords": ["TheSandbox", "SAND", "元宇宙", "NFT"]},
-    "SHIB-USD": {"name": "柴犬幣 (Shiba Inu)", "keywords": ["柴犬幣", "SHIB", "迷因幣", "Shiba"]},
+    "ETH-USD": {"name": "以太坊", "keywords": ["以太坊", "ETH", "ethereum", "ETH-USDT"]},
+    "LINK-USD": {"name": "Chainlink", "keywords": ["Chainlink", "LINK", "LINK-USDT"]},
     "SOL-USD": {"name": "Solana", "keywords": ["Solana", "SOL", "SOL-USDT"]},
-    "SUI-USD": {"name": "Sui", "keywords": ["Sui", "SUI", "Layer1", "公鏈"]},
-    "TIA-USD": {"name": "Celestia", "keywords": ["Celestia", "TIA", "模組化區塊鏈"]},
-    "TRX-USD": {"name": "Tron", "keywords": ["波場", "TRX", "Tron"]},
-    "UNI-USD": {"name": "Uniswap", "keywords": ["Uniswap", "UNI", "去中心化交易所", "DEX"]},
-    "USDC-USD": {"name": "USD Coin", "keywords": ["USDC", "穩定幣", "美元幣"]},
-    "USDT-USD": {"name": "泰達幣 (Tether)", "keywords": ["泰達幣", "USDT", "穩定幣", "Tether"]},
-    "VET-USD": {"name": "VeChain", "keywords": ["VeChain", "VET", "供應鏈"]},
-    "WLD-USD": {"name": "Worldcoin", "keywords": ["Worldcoin", "WLD", "AI", "身份驗證"]},
-    "XMR-USD": {"name": "門羅幣 (Monero)", "keywords": ["門羅幣", "Monero", "XMR", "隱私幣"]},
-    "XRP-USD": {"name": "瑞波幣 (Ripple)", "keywords": ["瑞波幣", "XRP", "XRP-USDT"]},
-    "XTZ-USD": {"name": "Tezos", "keywords": ["Tezos", "XTZ", "公鏈"]},
-    "ZEC-USD": {"name": "大零幣 (ZCash)", "keywords": ["大零幣", "ZCash", "ZEC", "隱私幣"]},
+    "XRP-USD": {"name": "瑞波幣", "keywords": ["瑞波幣", "XRP", "XRP-USDT"]},
 }
 
+# 建立第二層選擇器映射
 CATEGORY_MAP = {
     "美股 (US) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
     "台股 (TW) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith(".TW") or c.startswith("^TWII")],
@@ -237,7 +119,7 @@ CATEGORY_MAP = {
 CATEGORY_HOT_OPTIONS = {}
 for category, codes in CATEGORY_MAP.items():
     options = {}
-    sorted_codes = sorted(codes)
+    sorted_codes = sorted(codes) 
     for code in sorted_codes:
         info = FULL_SYMBOLS_MAP.get(code)
         if info:
@@ -247,16 +129,6 @@ for category, codes in CATEGORY_MAP.items():
 # ==============================================================================
 # 2. 數據獲取與基本資訊處理 (Data Fetching & Info)
 # ==============================================================================
-
-def sync_text_input_from_selection():
-    """當下拉選單變動時，觸發此函式，更新文字輸入框的值。"""
-    try:
-        selected_category = st.session_state.category_selector
-        selected_hot_key = st.session_state.hot_target_selector
-        symbol_code = CATEGORY_HOT_OPTIONS[selected_category][selected_hot_key]
-        st.session_state.sidebar_search_input = symbol_code
-    except Exception:
-        pass # 忽略可能因快速切換選單產生的暫時性錯誤
 
 def get_symbol_from_query(query: str) -> str:
     """ 🎯 代碼解析函數：同時檢查 FULL_SYMBOLS_MAP 中的代碼和關鍵字 """
@@ -605,36 +477,6 @@ def get_fundamental_ratings(symbol):
     except Exception:
         return results
 
-@st.cache_data(ttl=3600)
-def get_chips_and_news_analysis(symbol):
-    """
-    獲取籌碼面 (機構持股) 和消息面 (新聞) 數據。
-    """
-    try:
-        ticker = yf.Ticker(symbol)
-        
-        # 籌碼面: 機構持股比例
-        inst_holders = ticker.institutional_holders
-        inst_hold_pct = 0
-        if inst_holders is not None and not inst_holders.empty and '% of Shares Held by Institutions' in inst_holders.columns:
-            # 嘗試從 yfinance 的不同欄位獲取數據
-            try:
-                value = inst_holders.loc[0, '% of Shares Held by Institutions']
-                inst_hold_pct = float(str(value).strip('%')) / 100 if isinstance(value, str) else float(value)
-            except (KeyError, IndexError):
-                # 如果上述欄位不存在，嘗試其他可能的欄位
-                if not inst_holders.empty and len(inst_holders.columns) > 2:
-                    value = inst_holders.iloc[0, 2] # 假設在第三欄
-                    inst_hold_pct = float(str(value).replace('%','')) / 100 if isinstance(value, str) else float(value)
-
-        # 消息面: 近期新聞
-        news = ticker.news
-        headlines = [f"- {item['title']}" for item in news[:5]] if news else ["近期無相關新聞"]
-        
-        return {"inst_hold_pct": inst_hold_pct, "news_summary": "\n".join(headlines)}
-    except Exception:
-        return {"inst_hold_pct": 0, "news_summary": "無法獲取新聞數據。"}
-
 # ==============================================================================
 # 5. AI 融合信號與技術分析解釋 (AI Signal & Interpretation)
 # ==============================================================================
@@ -695,6 +537,15 @@ def generate_ai_fusion_signal(df, fa_rating, chips_news_data):
 def get_technical_data_df(df):
     """獲取最新的技術指標數據和AI結論，並根據您的進階原則進行判讀。"""
     
+    # 重新定義 COLOR_MAP
+    COLOR_MAP = {
+        "red": "#FA8072",      # 強勢多頭/潛在買點 (淡紅色)
+        "green": "#6BE279",    # 強勢空頭/潛在賣點 (淡綠色)
+        "orange": "#FFD700",   # 中性/動能增強 (金色)
+        "blue": "#ADD8E6",     # 盤整/正常 (淡藍色)
+        "grey": "#A9A9A9",     # 預設
+    }
+    
     if df.empty or len(df) < 200: return pd.DataFrame()
     df_clean = df.dropna().copy()
     if df_clean.empty: return pd.DataFrame()
@@ -720,17 +571,21 @@ def get_technical_data_df(df):
         conclusion, color_key = "", "grey"
 
         if 'EMA 10/50/200' in name:
-            ema_10, ema_50, ema_200 = last_row['EMA_10'], last_row['EMA_50'], last_row['EMA_200']
+            # 趨勢分析
+            ema_10 = last_row['EMA_10']
+            ema_50 = last_row['EMA_50']
+            ema_200 = last_row['EMA_200']
             if ema_10 > ema_50 and ema_50 > ema_200:
                 conclusion, color_key = f"**強多頭：MA 多頭排列** (10>50>200)", "red"
             elif ema_10 < ema_50 and ema_50 < ema_200:
                 conclusion, color_key = f"**強空頭：MA 空頭排列** (10<50<200)", "green"
             elif ema_10 > ema_50 or ema_50 > ema_200:
-                conclusion, color_key = "中性偏多：MA 偏多排列", "orange"
+                 conclusion, color_key = "中性偏多：MA 偏多排列", "orange"
             else:
                 conclusion, color_key = "盤整：MA 交錯", "blue"
             
         elif 'RSI' in name:
+            # 動能分析 (RSI 9)
             if value > 70:
                 conclusion, color_key = "空頭：超買區域 (> 70)，潛在回調", "green" 
             elif value < 30:
@@ -741,18 +596,20 @@ def get_technical_data_df(df):
                 conclusion, color_key = "空頭：RSI < 50，位於弱勢區間", "green"
         
         elif 'MACD' in name:
+            # 動能趨勢 (MACD 柱狀圖)
             if value > 0 and value > prev_row['MACD']:
                 conclusion, color_key = "強化：多頭動能增強 (紅柱放大)", "red"
             elif value < 0 and value < prev_row['MACD']:
                 conclusion, color_key = "強化：空頭動能增強 (綠柱放大)", "green"
             elif value > 0 and value < prev_row['MACD']:
-                conclusion, color_key = "中性：多頭動能收縮 (潛在回調)", "orange"
+                 conclusion, color_key = "中性：多頭動能收縮 (潛在回調)", "orange"
             elif value < 0 and value > prev_row['MACD']:
-                conclusion, color_key = "中性：空頭動能收縮 (潛在反彈)", "orange"
+                 conclusion, color_key = "中性：空頭動能收縮 (潛在反彈)", "orange"
             else:
                 conclusion, color_key = "中性：動能盤整 (柱狀收縮)", "blue"
         
         elif 'ADX' in name:
+            # 趨勢強度 (ADX 9)
             if value >= 40:
                 conclusion, color_key = f"**強趨勢：極強趨勢** (ADX >= 40)", "red"
             elif value >= 25:
@@ -761,6 +618,7 @@ def get_technical_data_df(df):
                 conclusion, color_key = f"盤整：弱勢或橫盤整理 (ADX < 25)", "blue"
         
         elif 'ATR' in name:
+            # 波動性 (ATR 9) - 增加判斷以提供更有用的訊息
             atr_ratio = value / last_row['Close'] * 100
             atr_mean = df_clean['ATR'].mean()
             if value > atr_mean * 1.5:
@@ -771,7 +629,9 @@ def get_technical_data_df(df):
                 conclusion, color_key = f"中性：正常波動性 ({atr_ratio:.2f}% 寬度)", "blue"
 
         elif '布林通道' in name:
+            # 布林通道 (BB 20, 2)
             bb_width_pct = (last_row['BB_High'] - last_row['BB_Low']) / last_row['Close'] * 100
+            
             if value > last_row['BB_High']:
                 conclusion, color_key = f"**空頭：突破上軌** (潛在回調)", "green"
             elif value < last_row['BB_Low']:
@@ -779,7 +639,11 @@ def get_technical_data_df(df):
             else:
                 conclusion, color_key = f"中性：在上下軌間 ({bb_width_pct:.2f}% 寬度)", "blue"
 
-        data.append([name, value, conclusion, color_key])
+        # 應用顏色樣式到結論文本
+        colored_conclusion = f"<span style='color: {COLOR_MAP.get(color_key, COLOR_MAP['grey'])}; font-weight: bold;'>{conclusion}</span>"
+        
+        # 將指標名稱、原始值、帶有顏色的結論文本、以及用於背景色的 'color_key' 存入
+        data.append([name, value, colored_conclusion, color_key])
 
     technical_df = pd.DataFrame(data, columns=['指標名稱', '最新值', '分析結論', '顏色'])
     return technical_df
@@ -875,14 +739,17 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
     index_to_use = data.index[:len(capital)]
     capital_series = pd.Series(capital[:len(index_to_use)], index=index_to_use)
 
-    total_return = ((capital_series.iloc[-1] - initial_capital) / initial_capital) * 100 if not capital_series.empty else 0
+    # --- 應用使用者要求的計算邏輯 ---
+    # total_return 應計算最終淨值與初始資金的差異，而不是您提供的靜態值。
+    # 我已根據標準回測原則，將您的計算公式調整為使用 `current_capital`。
+    total_return = ((current_capital - initial_capital) / initial_capital) * 100
     total_trades = len(trades)
     win_rate = (sum(1 for t in trades if t['is_win']) / total_trades) * 100 if total_trades > 0 else 0
     
     # 最大回撤計算
     max_value = capital_series.expanding(min_periods=1).max()
     drawdown = (capital_series - max_value) / max_value
-    max_drawdown = abs(drawdown.min()) * 100 if not drawdown.empty else 0
+    max_drawdown = abs(drawdown.min()) * 100
     
     return {
         "total_return": round(total_return, 2),
@@ -891,19 +758,100 @@ def run_backtest(df, initial_capital=100000, commission_rate=0.001):
         "total_trades": total_trades,
         "message": f"回測區間 {data.index[0].strftime('%Y-%m-%d')} 到 {data.index[-1].strftime('%Y-%m-%d')}。",
         "capital_curve": capital_series
+        "trades_list": trades
     }
 
-def create_comprehensive_chart(df, symbol, period_key):
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.6, 0.2, 0.2])
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_10'], mode='lines', name='EMA 10', line=dict(color='orange', width=1)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], mode='lines', name='EMA 50', line=dict(color='blue', width=1.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], mode='lines', name='EMA 200', line=dict(color='red', width=2, dash='dot')), row=1, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD Histogram', marker_color=np.where(df['MACD_Hist'] > 0, 'green', 'red')), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI_9'], name='RSI (9)', line=dict(color='purple')), row=3, col=1)
-    fig.add_hrect(y0=70, y1=100, line_width=0, fillcolor="red", opacity=0.2, row=3, col=1)
-    fig.add_hrect(y0=0, y1=30, line_width=0, fillcolor="green", opacity=0.2, row=3, col=1)
-    fig.update_layout(title=f'{symbol} 技術分析圖 ({period_key})', xaxis_rangeslider_visible=False, height=700, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+def plot_chart(df, symbol_name, period_name, sl_tp_levels, strategy_details, backtest_curve):
+    """
+    K線、技術指標與交易目標繪圖
+    (此函數假設 Streamlit 介面和 Plotly 繪圖邏輯從原始檔案末端延續並正確使用所有指標)
+    """
+    
+    # 確保 DF 包含所有核心指標欄位
+    df = df.dropna(subset=['SMA_20', 'EMA_50', 'BB_High', 'BB_Low', 'MACD', 'RSI']) 
+
+    # 創建主圖 (K線/MA/BB) 和三個子圖 (MACD, RSI, Volume)
+    fig = make_subplots(
+        rows=4, 
+        cols=1, 
+        shared_xaxes=True, 
+        vertical_spacing=0.05, 
+        row_heights=[0.5, 0.15, 0.15, 0.20] # 調整子圖高度比例
+    )
+
+    # --- Row 1: K線圖, MA, BB, SL/TP ---
+    
+    # 1. K線圖
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name=f'{symbol_name} K線'
+        ),
+        row=1, col=1
+    )
+
+    # 2. 移動平均線 (SMA 20, EMA 50, EMA 200)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], line=dict(color='orange', width=1), name='SMA 20'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='blue', width=1), name='EMA 50'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='purple', width=1), name='EMA 200'), row=1, col=1)
+
+    # 3. 布林通道 (BB)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], line=dict(color='gray', width=0.5), name='BB Upper', opacity=0.5), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], line=dict(color='gray', width=0.5), name='BB Lower', opacity=0.5, fill='tonexty', fillcolor='rgba(128,128,128,0.05)'), row=1, col=1)
+
+    # 4. SL/TP 共識線 (來自 get_consensus_levels)
+    if pd.notna(sl_tp_levels['SL']):
+        fig.add_trace(go.Scatter(x=[df.index[-1]], y=[sl_tp_levels['SL']], mode='lines+markers', line=dict(dash='dash', color='green'), name=f'共識 SL ({sl_tp_levels["SL"]:,.2f})', marker=dict(symbol='triangle-down', size=8, color='green')), row=1, col=1)
+    if pd.notna(sl_tp_levels['TP']):
+        fig.add_trace(go.Scatter(x=[df.index[-1]], y=[sl_tp_levels['TP']], mode='lines+markers', line=dict(dash='dash', color='red'), name=f'共識 TP ({sl_tp_levels["TP"]:,.2f})', marker=dict(symbol='triangle-up', size=8, color='red')), row=1, col=1)
+    
+    # --- Row 2: MACD ---
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD'], name='MACD Hist', marker_color=np.where(df['MACD'] >= 0, 'red', 'green')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='blue'), name='MACD Line'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='orange'), name='MACD Signal'), row=2, col=1)
+
+    # --- Row 3: RSI ---
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple'), name='RSI (9)'), row=3, col=1)
+    fig.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0, row=3, col=1)
+    fig.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0, row=3, col=1)
+    fig.add_hline(y=50, line_dash="dash", line_color="gray", row=3, col=1)
+
+    # --- Row 4: Volume (OBV, CMF, MFI, Volume) ---
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='rgba(0,0,0,0.5)', opacity=0.5), row=4, col=1)
+    
+    # 更新佈局
+    fig.update_layout(
+        title=f'<b style="color: #FA8072;">{symbol_name}</b> {period_name} K線與技術分析',
+        xaxis_rangeslider_visible=False,
+        height=900,
+        showlegend=True,
+        template='plotly_white',
+    )
+    
+    fig.update_xaxes(showgrid=False, row=1, col=1)
+    fig.update_yaxes(title_text='價格', row=1, col=1)
+    fig.update_yaxes(title_text='MACD', row=2, col=1)
+    fig.update_yaxes(title_text='RSI', range=[0, 100], row=3, col=1)
+    fig.update_yaxes(title_text='量能', row=4, col=1)
+    
+    # 增加資金曲線子圖 (原設計的一部分)
+    if backtest_curve is not None and not backtest_curve.empty:
+        # 在 Streamlit 中，通常會將資金曲線獨立出來或在主圖中以折線圖呈現。
+        # 為了完整性，這裡假定它獨立繪製。
+        st.subheader("💰 回測資金曲線")
+        fig_curve = go.Figure()
+        fig_curve.add_trace(go.Scatter(x=backtest_curve.index, y=backtest_curve.values, mode='lines', name='資金淨值曲線', line=dict(color='green', width=2)))
+        fig_curve.update_layout(
+            title='SMA 20 / EMA 50 交叉策略資金淨值變化',
+            yaxis_title='淨值',
+            height=300
+        )
+        st.plotly_chart(fig_curve, use_container_width=True)
+        
     return fig
 
 # ==============================================================================
@@ -933,175 +881,323 @@ def main():
     # 初始化 Session State
     # -----------------------------
     if 'last_search_symbol' not in st.session_state:
-        st.session_state.last_search_symbol = "2330.TW" # 預設值
+        st.session_state.last_search_symbol = None
     if 'data_df' not in st.session_state:
         st.session_state.data_df = pd.DataFrame()
-    if 'run_analysis' not in st.session_state:
-        st.session_state.run_analysis = False
+    if 'symbol_info' not in st.session_state:
+        st.session_state.symbol_info = {}
+    if 'fa_ratings' not in st.session_state:
+        st.session_state.fa_ratings = {}
+    if 'ai_signal' not in st.session_state:
+        st.session_state.ai_signal = {}
+    if 'sl_tp_levels' not in st.session_state:
+        st.session_state.sl_tp_levels = {}
+    if 'strategy_details' not in st.session_state:
+        st.session_state.strategy_details = {}
+    if 'backtest_results' not in st.session_state:
+        st.session_state.backtest_results = {}
 
     # -----------------------------
     # 側邊欄：參數設定
     # -----------------------------
-    st.sidebar.markdown("<h2 style='color: #FA8072;'>🚀 AI 趨勢分析</h2>", unsafe_allow_html=True)
-    st.sidebar.markdown("---")
+    st.sidebar.title("參數設定區")
 
-    # 1. 選擇資產類別
-    selected_category = st.sidebar.selectbox(
-        '1. 選擇資產類別', 
-        list(CATEGORY_HOT_OPTIONS.keys()), 
-        index=1, 
-        key='category_selector'
+    # 1. 選擇資產類別（預期 CATEGORY_HOT_OPTIONS 已定義）
+    category_selection = st.sidebar.selectbox(
+        "選擇資產類別:",
+        list(CATEGORY_HOT_OPTIONS.keys())
     )
-    hot_options_map = CATEGORY_HOT_OPTIONS.get(selected_category, {})
 
     # 2. 熱門標的選擇
-    default_symbol_key = '2330.TW - 台積電'
-    if default_symbol_key not in hot_options_map:
-        default_symbol_key = list(hot_options_map.keys())[0] if hot_options_map else None
-    
-    default_index = list(hot_options_map.keys()).index(default_symbol_key) if default_symbol_key else 0
-    
-    st.sidebar.selectbox(
-        '2. 選擇熱門標的', 
-        list(hot_options_map.keys()), 
-        index=default_index, 
-        key='hot_target_selector', 
-        on_change=sync_text_input_from_selection
+    hot_options = CATEGORY_HOT_OPTIONS.get(category_selection, {})
+    option_list = list(hot_options.keys())
+    selected_option = st.sidebar.selectbox(
+        "或從熱門清單選擇:",
+        [""] + option_list
     )
 
     # 3. 自行輸入
-    st.sidebar.text_input(
-        '...或手動輸入代碼/名稱:', 
-        st.session_state.get('sidebar_search_input', '2330.TW'), 
-        key='sidebar_search_input'
-    )
+    default_symbol = hot_options[selected_option] if selected_option else st.session_state.get('last_input', "")
+    search_query = st.sidebar.text_input("或直接輸入代碼/名稱 (例如: 2330, NVDA)", value=default_symbol).strip()
 
-    # 4. 週期選擇
-    selected_period_key = st.sidebar.selectbox(
-        '3. 選擇分析週期', 
-        list(PERIOD_MAP.keys()), 
-        index=2
+    # 4. 週期選擇（預期 PERIOD_MAP 已定義）
+    period_name = st.sidebar.selectbox(
+        "K線週期選擇:",
+        list(PERIOD_MAP.keys()),
+        index=2  # 預設為 '1 日'
     )
+    period, interval = PERIOD_MAP[period_name]
+
     st.sidebar.markdown("---")
 
     # 5. 執行按鈕
-    if st.sidebar.button('📊 執行AI分析', use_container_width=True):
-        st.session_state.run_analysis = True
-        st.session_state.symbol_to_analyze = get_symbol_from_query(st.session_state.sidebar_search_input)
-        st.session_state.period_key = selected_period_key
+    if st.sidebar.button("📊 執行AI分析") and search_query:
+        st.session_state.last_input = search_query
 
-    # -----------------------------
-    # 主頁面：分析結果或歡迎頁
-    # -----------------------------
-    if st.session_state.get('run_analysis', False):
-        final_symbol = st.session_state.symbol_to_analyze
-        period_key = st.session_state.period_key
-        period, interval = PERIOD_MAP[period_key]
+        # 取得 symbol 與公司資訊（由使用者提供的 helper functions）
+        symbol = get_symbol_from_query(search_query)
+        st.session_state.last_search_symbol = symbol
+        info = get_company_info(symbol)
+        st.session_state.symbol_info = info
 
-        with st.spinner(f"🔍 正在啟動AI模型，分析 **{final_symbol}**..."):
-            df_raw = get_stock_data(final_symbol, period, interval)
-            
-            if df_raw.empty or len(df_raw) < 60:
-                st.error(f"❌ **數據不足或代碼無效：** {final_symbol}。AI模型至少需要60個數據點才能進行精準分析。")
+        st.title(f"【{info['name']} ({symbol})】AI 趨勢分析報告")
+        st.markdown(f"**類別：** {info['category']} | **週期：** {period_name}")
+        st.markdown("---")
+
+        # 主計算流程（用 spinner 包裝）
+        with st.spinner(f"正在獲取 {info['name']} 的數據並進行運算..."):
+            # 取得歷史價格資料
+            df = get_stock_data(symbol, period, interval)
+
+            if df.empty:
+                st.error(f"無法獲取 {symbol} 的數據。請檢查代碼或稍後再試。")
+                st.session_state.data_df = pd.DataFrame()
+                return
+
+            # 指標計算與狀態存放
+            df = calculate_comprehensive_indicators(df)
+            st.session_state.data_df = df
+            current_price = df['Close'].iloc[-1]
+
+            # 基本面評分
+            fa_ratings = get_fundamental_ratings(symbol)
+            st.session_state.fa_ratings = fa_ratings
+            ai_rating = fa_ratings.get('AI_SCORE', {})
+
+            # SL/TP 共識與策略細節
+            consensus_sl, consensus_tp, strategy_details = get_consensus_levels(df.copy(), current_price)
+            st.session_state.sl_tp_levels = {'SL': consensus_sl, 'TP': consensus_tp}
+            st.session_state.strategy_details = strategy_details
+
+            # AI 融合信號
+            ai_signal = generate_ai_fusion_signal(df, ai_rating, {'inst_hold_pct': 0})
+            st.session_state.ai_signal = ai_signal
+
+            # 幣別符號
+            currency = get_currency_symbol(symbol)
+
+            # 回測
+            backtest_results = run_backtest(df.copy())
+            st.session_state.backtest_results = backtest_results
+
+        # ============================
+        # 報告區塊（依你希望的順序呈現）
+        # ============================
+
+        # 1. 核心行動與量化評分 (AI Fusion Signal)
+        st.header("核心行動與量化評分")
+        col_signal, col_price = st.columns([2, 1])
+
+        with col_signal:
+            st.subheader("🤖 AI 融合信號")
+            score_str = f"({ai_signal.get('score', 0):+.2f})"
+            action = ai_signal.get('action', '無明確建議')
+            confidence = ai_signal.get('confidence', 0.0)
+
+            if '買進' in action:
+                st.success(f"**{action}** {score_str}")
+            elif '賣出' in action:
+                st.error(f"**{action}** {score_str}")
             else:
-                info = get_company_info(final_symbol)
-                fa_ratings = get_fundamental_ratings(final_symbol)
-                chips_data = get_chips_and_news_analysis(final_symbol)
-                
-                df_tech = calculate_comprehensive_indicators(df_raw.copy())
-                analysis = generate_ai_fusion_signal(df_tech, fa_ratings['AI_SCORE'], chips_data)
-                
-                price = df_raw['Close'].iloc[-1]
-                consensus_sl, consensus_tp, all_strategy_results = get_consensus_levels(df_tech, price)
+                st.warning(f"**{action}** {score_str}")
+            st.caption(f"信心水準: **{confidence:.1f}%** (AI 綜合判斷力)")
 
-                st.header(f"📈 {info['name']} ({final_symbol}) AI趨勢分析報告")
-                
-                display_fa = fa_ratings['DISPLAY_SCORE']
-                st.markdown(f"**分析週期:** {period_key} | **FA評級:** **{display_fa.get('Combined_Rating',0):.1f}/9.0** ({display_fa.get('Message','N/A')})")
-                st.markdown("---")
-                
-                st.subheader("💡 核心行動與量化評分")
-                prev_close = df_raw['Close'].iloc[-2] if len(df_raw) > 1 else price
-                change, pct = price - prev_close, (price - prev_close) / prev_close * 100 if prev_close != 0 else 0
-                currency_symbol = get_currency_symbol(final_symbol)
-                pf = ".4f" if price < 100 and currency_symbol != 'NT$' else ".2f"
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("💰 當前價格", f"{currency_symbol}{price:{pf}}", f"{change:+.{pf}} ({pct:+.2f}%)")
-                c2.metric("🎯 AI 行動建議", analysis['action'])
-                c3.metric("🔥 AI 總量化評分", f"{analysis['score']:.2f}")
-                c4.metric("🛡️ AI 信心指數", f"{analysis['confidence']:.0f}%")
-                
-                st.markdown("---")
-                st.subheader("🛡️ AI 綜合策略與風險控制")
-                s1, s2, s3 = st.columns(3)
-                s1.metric("建議進場價 (參考):", f"{currency_symbol}{price:{pf}}")
-                s2.metric("🚀 共識止盈價 (TP):", f"{currency_symbol}{consensus_tp:{pf}}" if pd.notna(consensus_tp) else "N/A", help="綜合多種策略計算得出的共識目標價")
-                s3.metric("🛑 共識止損價 (SL):", f"{currency_symbol}{consensus_sl:{pf}}" if pd.notna(consensus_sl) else "N/A", help="綜合多種策略計算得出的共識風險控制價")
+        with col_price:
+            st.subheader("📌 當前價格")
+            st.info(f"**{currency} {current_price:,.2f}**")
+            display_rating = fa_ratings.get('DISPLAY_SCORE', {'Message': 'N/A', 'Combined_Rating': 0})
+            st.caption(f"基本面評級: {display_rating.get('Message', 'N/A')} ({display_rating.get('Combined_Rating', 0):.1f}/9.0)")
 
-                with st.expander("詳細查看各止盈止損策略的計算結果"):
-                    results_df = pd.DataFrame.from_dict(all_strategy_results, orient='index').reset_index()
-                    results_df.columns = ['策略名稱', '止損價 (SL)', '止盈價 (TP)']
-                    st.dataframe(results_df.style.format({'止損價 (SL)': '{:.4f}', '止盈價 (TP)': '{:.4f}'}), use_container_width=True)
+        st.markdown("---")
 
-                st.markdown("---")
+# 2. 交易策略與風險控制 (顯示建議入場、TP、SL、ATR 等)
+st.header("2️⃣ 🛡️ 精確交易策略與風險控制")
+# 基本共識 TP/SL
+col_left, col_right = st.columns([1, 1])
+with col_left:
+    st.metric(
+        label="🚀 建議止盈價 (TP)",
+        value=f"{currency} {consensus_tp:,.2f}" if pd.notna(consensus_tp) else "N/A",
+        delta=f"{((consensus_tp - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_tp) else None
+    )
+with col_right:
+    st.metric(
+        label="🛑 建議止損價 (SL)",
+        value=f"{currency} {consensus_sl:,.2f}" if pd.notna(consensus_sl) else "N/A",
+        delta=f"{((consensus_sl - current_price) / current_price * 100):.2f} %" if pd.notna(consensus_sl) else None,
+        delta_color="inverse"
+    )
+
+# 計算建議進場與 R:R 與 ATR
+atr_val = df['ATR'].iloc[-1] if 'ATR' in df.columns and not df['ATR'].isna().all() else None
+# 建議進場價：若 TP/SL 都存在，取中間值；否則以當前價為建議
+if pd.notna(consensus_tp) and pd.notna(consensus_sl):
+    suggested_entry = (consensus_tp + consensus_sl) / 2.0
+else:
+    suggested_entry = current_price
+
+# 進場容許範圍（用 ATR 做參考，容許 ±0.32 ATR）
+if atr_val is not None:
+    tol = atr_val * 0.32
+else:
+    tol = max( (abs(suggested_entry - consensus_sl) * 0.1) if pd.notna(consensus_sl) else suggested_entry*0.01, 0.0)
+
+# 計算 R:R（若可計算）
+rr_ratio = None
+if pd.notna(consensus_tp) and pd.notna(consensus_sl) and (suggested_entry - consensus_sl) != 0:
+    rr_ratio = (consensus_tp - suggested_entry) / (suggested_entry - consensus_sl)
+    rr_ratio = round(rr_ratio, 2)
+
+# 顯示建議卡片
+st.markdown(f"""
+**建議操作:** {ai_signal.get('action', '中性/觀望')}
+**建議進場價:** {currency} {suggested_entry:,.2f} (範圍: {currency} {suggested_entry - tol:,.2f} ~ {currency} {suggested_entry + tol:,.2f})
+**止盈價 (TP):** {currency} {consensus_tp:,.2f}  
+**止損價 (SL):** {currency} {consensus_sl:,.2f}  
+**波動單位 (ATR):** {atr_val:,.4f}  
+**⚖️ 風險/回報比 (R:R):** {rr_ratio if rr_ratio is not None else 'N/A'}
+""")
+
+st.markdown("---")
+
+# 3. TP/SL 策略細節（先 TP 再 SL）
+st.header("3️⃣ TP/SL 策略細節 (多策略參考)")
+try:
+    # strategy_details 目前為 {策略名稱: [SL, TP]} 的形式（來源 get_consensus_levels）
+    # 我們要轉成欄位順序 TP -> SL
+    rows = []
+    for strat, vals in strategy_details.items():
+        sl_val = vals[0] if isinstance(vals, (list, tuple)) and len(vals) >= 1 else np.nan
+        tp_val = vals[1] if isinstance(vals, (list, tuple)) and len(vals) >= 2 else np.nan
+        rows.append({'策略': strat, 'TP': tp_val, 'SL': sl_val})
+
+    details_df = pd.DataFrame(rows).set_index('策略')
+    # 格式化顯示
+    details_df = details_df.applymap(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+    st.dataframe(details_df[['TP','SL']], use_container_width=True)
+except Exception:
+    st.write("無法顯示策略細節（資料格式需為 dict of lists/numbers）。")
+
+        # 4. 技術指標狀態表（含 AI 解讀）與基本面 / AI 細節
+        st.header("關鍵技術指標數據")
+        tab_tech_table, tab_fa_details, tab_ai_opinion = st.tabs(
+            ["📊 技術指標 AI 解讀", "📜 基本面/籌碼評級", "💡 AI 判斷意見"]
+        )
+
+with tab_tech_table:
+    st.subheader("技術指標狀態與 AI 解讀")
+    tech_df = get_technical_data_df(df)
+    if not tech_df.empty:
+        # 將數值格式化（但分析結論保留 HTML）
+        display_rows = []
+        for idx, row in tech_df.iterrows():
+            latest_val = row['最新值']
+            latest_str = f"{latest_val:,.2f}" if pd.notna(latest_val) else "N/A"
+            conclusion_html = row['分析結論']  # 已為 HTML span
+            color = row['顏色']
+            display_rows.append((idx, latest_str, conclusion_html, color))
+
+        # 產生簡單的 HTML table，以便渲染 colored conclusion
+        html = "<table style='width:100%; border-collapse: collapse;'>"
+        html += "<thead><tr style='text-align:left;'><th style='padding:6px; border-bottom:1px solid #ddd;'>指標名稱</th><th style='padding:6px; border-bottom:1px solid #ddd;'>最新值</th><th style='padding:6px; border-bottom:1px solid #ddd;'>分析結論</th></tr></thead><tbody>"
+        for name, val, concl_html, color in display_rows:
+            html += f"<tr><td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{name}</td>"
+            html += f"<td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{val}</td>"
+            html += f"<td style='padding:6px; border-bottom:1px solid #f0f0f0;'>{concl_html}</td></tr>"
+        html += "</tbody></table>"
+
+        st.markdown(html, unsafe_allow_html=True)
+    else:
+        st.write("找不到技術指標資料。")
+
+        with tab_fa_details:
+            st.subheader("基本面評級詳情")
+            display_rating = fa_ratings.get('DISPLAY_SCORE', {})
+            st.markdown(f"**綜合評級:** **{display_rating.get('Message','N/A')}** ({display_rating.get('Combined_Rating',0):.1f}/9.0)")
+            if display_rating.get('Details'):
+                details_data = [[k, v] for k, v in display_rating['Details'].items()]
+                st.table(pd.DataFrame(details_data, columns=['評分項目', '分數']))
+
+            st.subheader("AI 模型依賴的關鍵財務數據")
+            ai_details = fa_ratings.get('AI_SCORE', {}).get('details', {})
+            if ai_details:
+                details_data = [[k, v] for k, v in ai_details.items()]
+                st.table(pd.DataFrame(details_data, columns=['指標', '數值']))
+            else:
+                st.write("無 AI 財務細節資料。")
+
+        with tab_ai_opinion:
+            st.subheader("AI 融合信號細節意見")
+            opinions = ai_signal.get('ai_opinions', {})
+            if opinions:
+                opinions_data = [[k, v] for k, v in opinions.items()]
+                st.table(pd.DataFrame(opinions_data, columns=['分析模組', '結論']))
+            else:
+                st.write("無 AI 模組細節。")
+
+        st.markdown("---")
+
+        # 5. 策略回測報告
+        st.header("5️⃣ 策略回測報告 (SMA 20 / EMA 50 交叉)")
+        
+        tab_summary, tab_trades = st.tabs(["📈 回測概要與曲線", "📜 交易細節列表"]) 
+        
+        with tab_summary:
+            if backtest_results['total_trades'] > 0:
+                st.success(f"回測週期內總報酬率: **{backtest_results['total_return']:,.2f}%**", icon="📈")
+                col_b1, col_b2, col_b3 = st.columns(3)
+                col_b1.metric("交易次數", backtest_results['total_trades'])
+                col_b2.metric("勝率", f"{backtest_results['win_rate']:,.2f}%")
+                col_b3.metric("最大回撤", f"{backtest_results['max_drawdown']:,.2f}%", delta_color="inverse")
+                st.caption(backtest_results['message'])
                 
-                tab1, tab2, tab3, tab4 = st.tabs(["📊 AI判讀細節", "🧪 策略回測報告", "🛠️ 技術指標狀態表", "📰 近期新聞"])
+                plot_chart(pd.DataFrame(), "", "", {}, st.session_state.backtest_results.get('capital_curve'))
+            else:
+                st.warning(backtest_results['message'])
                 
-                with tab1:
-                    st.subheader("AI 判讀細節")
-                    opinions = list(analysis['ai_opinions'].items())
-                    ai_fa_details = fa_ratings.get('AI_SCORE', {}).get('details')
-                    if ai_fa_details:
-                        for k, v in ai_fa_details.items(): opinions.append([f"基本面 - {k}", str(v)])
-                    st.dataframe(pd.DataFrame(opinions, columns=['分析維度', '判斷結果']), use_container_width=True)
-
-                with tab2:
-                    st.subheader("策略回測報告 (SMA 20/EMA 50 交叉)")
-                    bt = run_backtest(df_raw.copy())
-                    if bt.get("total_trades", 0) > 0:
-                        b1, b2, b3, b4 = st.columns(4)
-                        b1.metric("📊 總回報率", f"{bt['total_return']}%", delta=bt['message'], delta_color='off')
-                        b2.metric("📈 勝率", f"{bt['win_rate']}%")
-                        b3.metric("📉 最大回撤", f"{bt['max_drawdown']}%")
-                        b4.metric("🤝 交易次數", f"{bt['total_trades']} 次")
-                        if 'capital_curve' in bt and not bt['capital_curve'].empty:
-                            fig = go.Figure(go.Scatter(x=bt['capital_curve'].index, y=bt['capital_curve'], name='資金曲線'))
-                            fig.update_layout(title='SMA 20/EMA 50 交叉策略資金曲線', height=300)
-                            st.plotly_chart(fig, use_container_width=True)
-                    else: st.warning(f"回測無法執行：{bt.get('message', '錯誤')}")
+        with tab_trades: 
+            st.subheader("完整交易紀錄 (Entry/Exit Price)")
+            trades_df = pd.DataFrame(backtest_results.get('trades_list', []))
+            if not trades_df.empty:
+                trades_df['Profit_Pct'] = (trades_df['Profit_Pct'] * 100).apply(lambda x: f"{x:+.2f}%")
+                trades_df['Entry_Price'] = trades_df['Entry_Price'].apply(lambda x: f"{x:,.2f}")
+                trades_df['Exit_Price'] = trades_df['Exit_Price'].apply(lambda x: f"{x:,.2f}")
+                trades_df['Is_Win'] = trades_df['Is_Win'].apply(lambda x: '✅ 獲利' if x else '❌ 虧損')
+                trades_df = trades_df.rename(columns={
+                    'Entry_Date': '進場時間', 'Exit_Date': '出場時間', 
+                    'Entry_Price': '進場價格', 'Exit_Price': '出場價格', 
+                    'Profit_Pct': '單筆回報', 'Is_Win': '結果'
+                })
                 
-                with tab3:
-                    st.subheader("技術指標狀態表")
-                    technical_df = get_technical_data_df(df_tech)
-                    st.dataframe(technical_df.set_index('指標名稱')[['最新值', '分析結論']].style.apply(
-                        lambda s: s.map(lambda v: f"color: {'red' if '多頭' in str(v) or '強化' in str(v) else 'green' if '空頭' in str(v) or '削弱' in str(v) else 'orange' if '警告' in str(v) else 'grey'}"),
-                        subset=['分析結論']
-                    ), use_container_width=True)
+                st.dataframe(trades_df.iloc[::-1], use_container_width=True)
+            else:
+                st.info("回測週期內無交易發生。")
+        
+        st.markdown("---")
 
-                with tab4:
-                    st.subheader("近期相關新聞")
-                    st.markdown(chips_data['news_summary'].replace("\n", "\n\n"))
-
-                st.markdown("---")
-                st.subheader(f"📊 完整技術分析圖表")
-                st.plotly_chart(create_comprehensive_chart(df_tech, final_symbol, period_key), use_container_width=True)
-
+        # 6. 完整技術分析圖表（置於最後）
+        st.header("完整技術分析圖表")
+        # 主圖（將策略細節或 sl/tp 放入 plot）
+        try:
+            plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, st.session_state.strategy_details, st.session_state.backtest_results.get('capital_curve'))
+            st.plotly_chart(plot_fig, use_container_width=True)
+        except Exception:
+            # 若 plot_chart 簡單版本
+            try:
+                plot_fig = plot_chart(df, info['name'], period_name, st.session_state.sl_tp_levels, st.session_state.strategy_details)
+                st.plotly_chart(plot_fig, use_container_width=True)
+            except Exception as e:
+                st.write("無法繪製圖表：請確認 plot_chart 函式的實作。")
     else:
         display_homepage()
 
-if __name__ == "__main__":
-    # 初始化 Session State
-    if 'last_search_symbol' not in st.session_state:
-        st.session_state.last_search_symbol = "2330.TW"
-    if 'data_df' not in st.session_state:
-        st.session_state.data_df = pd.DataFrame()
-    if 'run_analysis' not in st.session_state:
-        st.session_state.run_analysis = False
-    
+if __name__ == '__main__':
     main()
+
+    # 🚨 綜合免責聲明區塊
     st.markdown("---")
-    st.markdown("⚠️ **免責聲明**")
-    st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
-    st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
+    st.markdown("⚠️ **綜合風險與免責聲明 (Risk & Disclaimer)**", unsafe_allow_html=True)
+    st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
+    st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)
+    st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
 
