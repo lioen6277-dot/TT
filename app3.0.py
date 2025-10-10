@@ -427,24 +427,30 @@ with st.sidebar:
 
 # --- 主畫面顯示 ---
 if not start_analysis:
-    # 歡迎頁面
-    st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀</span> 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
-    st.markdown("請在左側選擇或輸入您想分析的標的（例如：`2330.TW`、`NVDA`、`BTC-USD`），然後點擊 **『📊 執行AI分析』** 按鈕開始。")
+    # 歡迎頁面 - 更新版本
+    st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
+    st.markdown("請在左側選擇或輸入您想分析的標的（例如：**2330.TW**、**NVDA**、**BTC-USD**），然後點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True)
     st.markdown("---")
+    
     st.subheader("📝 使用步驟：")
     st.markdown("""
     1.  **選擇資產類別**: 在左側欄選擇 `美股`、`台股` 或 `加密貨幣`。
     2.  **選擇標的**: 使用下拉選單快速選擇熱門標的，或直接在輸入框中鍵入代碼或名稱。
-    3.  **選擇週期**: 決定分析的長度（例如：`30 分` (短期)、`1 日` (中長線)）。
-    4.  **執行分析**: 點擊 **『📊 執行AI分析』**，AI將融合基本面與技術面指標提供交易策略。
-    """)
+    3.  **選擇週期**: 決定分析的長度（例如：`30 分`、`4 小時`、`1 日`、`1 周`）。
+    4.  **執行分析**: 點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span>，AI將融合基本面與技術面指標提供交易策略。
+    """, unsafe_allow_html=True)
+    
     st.markdown("---")
-    st.warning("""
-    **⚠️ 綜合風險與免責聲明 (Risk & Disclaimer)**\n
-    本AI趨勢分析模型，是基於量化集成學習 (Ensemble)的專業架構。其分析結果僅供參考用途。\n
-    投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並強烈建議諮詢專業金融顧問。
-    """)
+    
+    st.markdown("⚠️ **綜合風險與免責聲明 (Risk & Disclaimer)**")
+    st.markdown(
+        """
+        本AI趨勢分析模型，是基於量化集成學習 (Ensemble)的專業架構。其分析結果僅供參考用途。
+        投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並強烈建議諮詢專業金融顧問。
+        """
+    )
     st.caption("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
 else:
     # 分析結果頁面
     with st.spinner(f'AI 分析引擎啟動中，正在分析 {final_symbol_name}...'):
@@ -569,5 +575,3 @@ else:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
-
-
