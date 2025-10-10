@@ -448,8 +448,7 @@ def main():
     
     # (UPDATED v8.1) 將標題移至歡迎頁面邏輯之外
     if 'analysis_results' not in st.session_state or st.session_state['analysis_results'] is None:
-        st.markdown(
-    
+
     st.sidebar.header("分析設定")
     st.sidebar.markdown("---")
     st.sidebar.subheader("1. 選擇資產類別")
