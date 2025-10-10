@@ -563,8 +563,7 @@ if start_analysis:
             
 else:
     # 歡迎頁面
-    elif not st.session_state.get('data_ready', False) and not analyze_button_clicked:
-          st.markdown(
+         st.markdown(
               """
               <h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>
               """, 
@@ -586,6 +585,7 @@ else:
           st.markdown("本AI趨勢分析模型，是基於**量化集成學習 (Ensemble)**的專業架構。其分析結果**僅供參考用途**")
           st.markdown("投資涉及風險，所有交易決策應基於您個人的**獨立研究和財務狀況**，並強烈建議諮詢**專業金融顧問**。", unsafe_allow_html=True)         
           st.markdown("📊 **數據來源:** Yahoo Finance | 🛠️ **技術指標:** TA 庫 | 💻 **APP優化:** 專業程式碼專家")
+
 
 
 
