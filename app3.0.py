@@ -228,7 +228,6 @@ FULL_SYMBOLS_MAP = {
     "ZEC-USD": {"name": "大零幣 (ZCash)", "keywords": ["大零幣", "ZCash", "ZEC", "隱私幣"]},
 }
 
-
 CATEGORY_MAP = {
     "美股 (US) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if not (c.endswith(".TW") or c.endswith("-USD") or c.startswith("^TWII"))],
     "台股 (TW) - 個股/ETF/指數": [c for c in FULL_SYMBOLS_MAP.keys() if c.endswith(".TW") or c.startswith("^TWII")],
@@ -1048,29 +1047,13 @@ def main():
                 with tab3:
                     st.subheader("技術指標狀態表")
                     technical_df = get_technical_data_df(df_tech)
-                    
-                    # 使用 st.column_config 來顯示顏色
-                    st.dataframe(
-                        technical_df,
-                        column_config={
-                            "分析結論": st.column_config.TextColumn(
-                                "分析結論",
-                                help="AI對該指標的量化判讀與結論",
-                            ),
-                            "顏色": st.column_config.Column(
-                                "趨勢方向",
-                                help="紅=多頭, 綠=空頭, 橘=警告, 藍=中性",
-                                disabled=True,
-                            )
-                        },
-                        use_container_width=True
-                    )
-                    st.caption("ℹ️ **設計師提示:** 顏色會根據指標的趨勢/風險等級自動變化。")
-
+                    st.dataframe(technical_df.set_index('指標名稱')[['最新值', '分析結論']].style.apply(
+                        lambda s: s.map(lambda v: f"color: {'red' if '多頭' in str(v) or '強化' in str(v) else 'green' if '空頭' in str(v) or '削弱' in str(v) else 'orange' if '警告' in str(v) else 'grey'}"),
+                        subset=['分析結論']
+                    ), use_container_width=True)
 
                 with tab4:
                     st.subheader("近期相關新聞")
-                    chips_data = get_chips_and_news_analysis(final_symbol) # 確保獲取最新新聞
                     st.markdown(chips_data['news_summary'].replace("\n", "\n\n"))
 
                 st.markdown("---")
@@ -1094,3 +1077,4 @@ if __name__ == "__main__":
     st.markdown("⚠️ **免責聲明**")
     st.caption("本分析模型包含AI的量化觀點，但僅供教育與參考用途。投資涉及風險，所有交易決策應基於您個人的獨立研究和財務狀況，並建議諮詢專業金融顧問。")
     st.markdown("📊 **數據來源:** Yahoo Finance | **技術指標:** TA 庫 | **APP優化:** 專業程式碼專家")
+
