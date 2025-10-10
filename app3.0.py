@@ -428,11 +428,11 @@ with st.sidebar:
 # --- 主畫面顯示 ---
 if not start_analysis:
     # 歡迎頁面 - 更新版本
-    st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True)
-    st.markdown("請在左側選擇或輸入您想分析的標的（例如：**2330.TW**、**NVDA**、**BTC-USD**），然後點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #FA8072; font-size: 32px; font-weight: bold;'>🚀 歡迎使用 AI 趨勢分析</h1>", unsafe_allow_html=True) #
+    st.markdown("請在左側選擇或輸入您想分析的標的（例如：**2330.TW**、**NVDA**、**BTC-USD**），然後點擊 <span style='color: #FA8072; font-weight: bold;'>『📊 執行AI分析』</span> 按鈕開始。", unsafe_allow_html=True) #
     st.markdown("---")
     
-    st.subheader("📝 使用步驟：")
+    st.subheader("📝 使用步驟：") #
     st.markdown("""
     1.  **選擇資產類別**: 在左側欄選擇 `美股`、`台股` 或 `加密貨幣`。
     2.  **選擇標的**: 使用下拉選單快速選擇熱門標的，或直接在輸入框中鍵入代碼或名稱。
@@ -575,4 +575,3 @@ else:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"數據不足或代碼 '{final_symbol}' 無效。請確認代碼是否正確（台股需加 .TW）。")
-
