@@ -1,287 +1,329 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票交易指標卡片分析</title>
+    <title>AI 趨勢分析與專業操盤計算器</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* 使用 Inter 字體 */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0d1117; /* Dark background */
-        }
-        /* 自定義光暈效果 CSS */
-        .glow-effect-entry {
-            box-shadow: 0 4px 6px -1px rgba(253, 164, 175, 0.4), 0 2px 4px -2px rgba(253, 164, 175, 0.4), 0 0 20px 0 rgba(253, 164, 175, 0.5); /* 鮭魚粉 */
-        }
-        .glow-effect-tp {
-            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.4), 0 2px 4px -2px rgba(239, 68, 68, 0.4), 0 0 20px 0 rgba(239, 68, 68, 0.5); /* 紅色 */
-        }
-        .glow-effect-sl {
-            box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.4), 0 2px 4px -2px rgba(34, 197, 94, 0.4), 0 0 20px 0 rgba(34, 197, 94, 0.5); /* 綠色 */
-        }
-    </style>
-</head>
-<body class="p-4 md:p-8 text-white min-h-screen">
-
-    <!-- 主標題與介紹 -->
-    <header class="mb-10 text-center">
-        <h1 class="text-4xl font-extrabold text-blue-400">股票交易分析儀表板</h1>
-        <p class="text-gray-400 mt-2">基於 K 線形態、VSA 及 ATR/R 倍數的動態風險管理策略</p>
-    </header>
-
-    <div id="app-container" class="max-w-7xl mx-auto">
-        <!-- 策略建議卡片區 (主要指標卡片) -->
-        <section class="mb-12">
-            <h2 class="text-3xl font-bold mb-6 border-b border-gray-700 pb-2 text-indigo-300">📈 策略建議 (R 倍數風險管理)</h2>
-            <div id="strategy-cards" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- 卡片將由 JS 渲染 -->
-            </div>
-        </section>
-
-        <!-- K 線和 VSA 分析區 (輔助分析) -->
-        <section class="mb-12">
-            <h2 class="text-3xl font-bold mb-6 border-b border-gray-700 pb-2 text-indigo-300">🔍 形態與價量分析</h2>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
-                <!-- K 線形態卡片 -->
-                <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 shadow-lg">
-                    <h3 class="text-xl font-semibold mb-4 text-pink-300 border-b border-gray-600 pb-2">K 線形態分析</h3>
-                    <div id="kline-analysis" class="space-y-3 text-sm">
-                        <!-- 數據將由 JS 渲染 -->
-                    </div>
-                </div>
-
-                <!-- VSA 價量分析卡片 -->
-                <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 shadow-lg">
-                    <h3 class="text-xl font-semibold mb-4 text-pink-300 border-b border-gray-600 pb-2">VSA 價量分析</h3>
-                    <div id="vsa-analysis" class="space-y-3 text-sm">
-                        <!-- 數據將由 JS 渲染 -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 數據片段區 (Raw Data) -->
-        <section>
-            <h2 class="text-3xl font-bold mb-6 border-b border-gray-700 pb-2 text-indigo-300">📊 數據片段 (最新5筆)</h2>
-            <div id="data-snippet" class="bg-gray-800/50 p-4 rounded-xl overflow-x-auto border border-gray-700">
-                <!-- 數據表格將由 JS 渲染 -->
-            </div>
-        </section>
-        
-    </div>
-
     <script>
-        // 模擬您的 Python 腳本成功執行的 JSON 輸出
-        // 由於我們無法直接運行 Python，這段 JSON 結構來自於您的 `stock_analysis.py` 腳本的最終輸出。
-        const analysisData = {
-            "AnalysisTitle": "股票交易指標卡片分析結果",
-            "DataSnippet": [
-                { "Date": "2025-03-16", "Close": 103.11, "Volume": 250000, "ATR": 0.8251 },
-                { "Date": "2025-03-17", "Close": 104.55, "Volume": 310000, "ATR": 0.8305 },
-                { "Date": "2025-03-18", "Close": 104.80, "Volume": 450000, "ATR": 0.8600 },
-                { "Date": "2025-03-19", "Close": 105.15, "Volume": 150000, "ATR": 0.8577 },
-                { "Date": "2025-03-20", "Close": 105.50, "Volume": 380000, "ATR": 0.8540 }
-            ],
-            "KLineAnalysis": [
-                { "Date": "2025-03-17", "Close": 104.55, "Pattern": "多頭吞噬 (Bullish Engulfing)" },
-                { "Date": "2025-03-18", "Close": 104.80, "Pattern": "未檢測到" }
-            ],
-            "VSAAnalysis": [
-                { "Date": "2025-03-19", "Close": 105.15, "Volume": 150000, "VSA_Signal": "潛在供應測試 (Testing Supply)" }
-            ],
-            "StrategyRecommendations": {
-                "LongEntry": {
-                    "EntryDate": "2025-03-20",
-                    "Details": {
-                        "Status": "成功",
-                        "入場類型": "Long",
-                        "入場價格": 105.50,
-                        "當前ATR (14期)": 0.8540,
-                        "R單位實際值": 1.2810,
-                        "止損價格 (SL)": 104.22,
-                        "目標 R 倍數": "4.0R",
-                        "目標價格 (TP)": 110.63,
-                        "風險回報比 (R:R)": "1:4.0"
-                    }
-                },
-                "ShortEntry": {
-                    "EntryDate": "2025-03-19",
-                    "Details": {
-                        "Status": "成功",
-                        "入場類型": "Short",
-                        "入場價格": 104.80,
-                        "當前ATR (14期)": 0.8600,
-                        "R單位實際值": 1.7200,
-                        "止損價格 (SL)": 106.52,
-                        "目標 R 倍數": "2.5R",
-                        "目標價格 (TP)": 100.55,
-                        "風險回報比 (R:R)": "1:2.5"
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-dark': '#1e293b',
+                        'secondary-light': '#f8fafc',
+                        'accent-green': '#10b981', // Emerald green for reward
+                        'accent-red': '#ef4444',   // Red for risk
+                        'accent-blue': '#3b82f6',  // Blue for AI
                     }
                 }
             }
-        };
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-900 text-secondary-light min-h-screen p-4 sm:p-8">
 
-        // 價格點的顏色和光暈配置
-        const priceConfig = {
-            '入場價格': { label: '進場價 (Entry)', color: 'text-pink-400', glow: 'glow-effect-entry', bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500' },
-            '目標價格 (TP)': { label: '止盈價 (Take Profit)', color: 'text-red-400', glow: 'glow-effect-tp', bgColor: 'bg-red-500/10', borderColor: 'border-red-500' },
-            '止損價格 (SL)': { label: '止損價 (Stop Loss)', color: 'text-green-400', glow: 'glow-effect-sl', bgColor: 'bg-green-500/10', borderColor: 'border-green-500' },
-        };
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-white mb-2">AI 趨勢分析與專業策略驗證</h1>
+            <p class="text-gray-400">宏觀趨勢定性 (AI) 結合微觀結構風控 (計算器)</p>
+        </header>
 
-        /**
-         * 渲染策略卡片 (Entry, TP, SL)
-         * @param {string} entryKey - 'LongEntry' or 'ShortEntry'
-         */
-        function renderStrategyCard(entryKey) {
-            const data = analysisData.StrategyRecommendations[entryKey];
-            if (!data || data.Details.Status !== '成功') return '';
+        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
 
-            const details = data.Details;
-            const entryType = details['入場類型'];
-            const title = entryType === 'Long' ? '多頭入場策略 (Long)' : '空頭入場策略 (Short)';
-            const headerColor = entryType === 'Long' ? 'text-emerald-400' : 'text-orange-400';
-            const icon = entryType === 'Long' ? '🚀' : '🔻';
+            <!-- 左側區塊：AI 趨勢分析器 (佔 3/5 寬度) -->
+            <div class="lg:col-span-3 bg-primary-dark p-6 sm:p-8 rounded-xl shadow-2xl space-y-6">
+                <h2 class="text-2xl font-bold border-b border-gray-700 pb-3 text-accent-blue flex items-center">
+                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-4-4m5-4a5 5 0 11-10 0 5 5 0 0110 0zm0 0l-1.5-1.5m1.5 1.5l1.5-1.5M10.5 13.5l1.5-1.5m-1.5 1.5l1.5 1.5"></path></svg>
+                    區塊一：AI 趨勢判斷與市場定性 (RSI / MACD 輔助)
+                </h2>
 
-            // 提取並格式化關鍵價格點
-            const keyPrices = [
-                { key: '入場價格', value: details['入場價格'] },
-                { key: '目標價格 (TP)', value: details['目標價格 (TP)'] },
-                { key: '止損價格 (SL)', value: details['止損價格 (SL)'] },
-            ];
+                <div>
+                    <label for="aiPrompt" class="block text-sm font-medium mb-1">輸入您想分析的標的物或市場問題（例如：TSLA, BTC, 黃金的最新季度表現）</label>
+                    <textarea id="aiPrompt" rows="3" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-blue focus:border-accent-blue transition duration-150 resize-y" placeholder="請輸入分析指令..."></textarea>
+                </div>
 
-            // 渲染三個價格指標卡片
-            const priceCardsHTML = keyPrices.map(item => {
-                const config = priceConfig[item.key];
-                const isEntry = item.key === '入場價格';
-                
-                return `
-                    <div class="p-4 rounded-xl border-2 ${config.borderColor} ${config.bgColor} ${isEntry ? 'glow-effect-entry' : (item.key.includes('TP') ? 'glow-effect-tp' : 'glow-effect-sl')} transition-all duration-300 hover:scale-[1.02] transform">
-                        <p class="text-sm text-gray-400">${config.label}</p>
-                        <p class="text-3xl font-bold mt-1 ${config.color}">
-                            $${item.value.toFixed(2)}
-                        </p>
-                    </div>
-                `;
-            }).join('');
+                <button id="analyzeButton" class="w-full py-3 bg-accent-blue hover:bg-blue-600 text-white font-bold rounded-lg transition duration-200 flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2 animate-spin hidden" id="loadingSpinner" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m15.356-2A8.001 8.001 0 004.582 15m15.356-2H12"></path></svg>
+                    開始 AI 趨勢分析
+                </button>
 
-            return `
-                <div class="bg-gray-800/70 p-6 rounded-2xl border border-gray-700 shadow-xl space-y-4">
-                    <h3 class="text-2xl font-bold ${headerColor} flex items-center gap-2">
-                        ${icon} ${title}
-                        <span class="text-sm text-gray-500 ml-auto">@ ${data.EntryDate}</span>
-                    </h3>
-                    
-                    <!-- 關鍵價格指標卡片區 -->
-                    <div class="grid grid-cols-3 gap-4">
-                        ${priceCardsHTML}
-                    </div>
-
-                    <!-- 風險回報詳情 -->
-                    <div class="pt-4 border-t border-gray-700">
-                        <div class="flex justify-between items-center text-md">
-                            <span class="text-gray-400">ATR (14 期):</span>
-                            <span class="font-medium text-blue-300">${details['當前ATR (14期)'].toFixed(4)}</span>
-                        </div>
-                        <div class="flex justify-between items-center text-md">
-                            <span class="text-gray-400">風險單位 R:</span>
-                            <span class="font-medium text-yellow-300">$${details['R單位實際值'].toFixed(4)}</span>
-                        </div>
-                        <div class="flex justify-between items-center text-lg mt-2 font-semibold">
-                            <span class="text-gray-300">目標 / 風險比 (R:R):</span>
-                            <span class="text-pink-400">${details['目標 R 倍數']} (${details['風險回報比 (R:R)']})</span>
-                        </div>
+                <div id="aiResults" class="mt-6 p-4 bg-gray-800 rounded-lg min-h-[150px]">
+                    <h3 class="text-xl font-semibold mb-3 text-yellow-300">分析結果</h3>
+                    <p id="analysisText" class="text-gray-300">AI 分析結果將顯示在此處。請務必結合您的 RSI/MACD 分析進行趨勢定性。</p>
+                    <div id="citations" class="mt-4 border-t border-gray-700 pt-3">
+                        <p class="text-sm text-gray-500 font-medium">資料來源 (Grounding Sources):</p>
+                        <ul id="sourceList" class="list-disc list-inside text-xs text-gray-400 mt-1 space-y-1">
+                            <!-- 來源將在此處顯示 -->
+                        </ul>
                     </div>
                 </div>
-            `;
+            </div>
+
+            <!-- 右側區塊：策略計算器 (佔 2/5 寬度) -->
+            <div class="lg:col-span-2 bg-primary-dark p-6 sm:p-8 rounded-xl shadow-2xl space-y-6">
+                <h2 class="text-2xl font-bold border-b border-gray-700 pb-3 text-yellow-400 flex items-center">
+                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0 0V8m0 4v2m0 0V8m0 4c-1.657 0-3-.895-3-2s1.343-2 3-2V8"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h.01M17 7h.01M7 7h.01M7 17h.01M12 7h.01M12 17h.01M17 12h.01M7 12h.01M12 12h.01"></path></svg>
+                    區塊二：風控與目標設定驗證
+                </h2>
+
+                <!-- 輸入區 Input Section -->
+                <div class="space-y-4">
+                    <!-- 開單價位 Entry Price -->
+                    <div>
+                        <label for="entryPrice" class="block text-sm font-medium mb-1">1. 開單價位 (Entry)</label>
+                        <input type="number" id="entryPrice" value="100.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
+                    </div>
+
+                    <!-- 結構止損錨定 Structural Anchor for SL -->
+                    <div>
+                        <label for="swingAnchor" class="block text-sm font-medium mb-1">2. 止損結構錨點 (前一個有效震盪低點)</label>
+                        <input type="number" id="swingAnchor" value="95.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
+                    </div>
+
+                    <!-- ATR 緩衝設定 ATR Buffer -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="atrValue" class="block text-sm font-medium mb-1">3. ATR 波動值</label>
+                            <input type="number" id="atrValue" value="0.50" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
+                        </div>
+                        <div>
+                            <label for="atrMultiplier" class="block text-sm font-medium mb-1">4. ATR 緩衝倍數 (例如 1.5)</label>
+                            <input type="number" id="atrMultiplier" value="1.50" step="0.1" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
+                        </div>
+                    </div>
+
+                    <!-- 止盈目標 Take Profit Target -->
+                    <div>
+                        <label for="tpTarget" class="block text-sm font-medium mb-1">5. 主要止盈目標 (TP2, 例如 1.618 擴展)</label>
+                        <input type="number" id="tpTarget" value="125.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
+                    </div>
+                </div>
+
+                <!-- 結果區 Result Section -->
+                <div id="results" class="bg-gray-800 p-5 rounded-lg shadow-inner space-y-4">
+                    <!-- 計算結果將在這裡顯示 -->
+                </div>
+
+                <div id="rrValidation" class="p-3 rounded-lg text-center font-extrabold text-xl shadow-md">
+                    <!-- R:R 驗證結果 -->
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const apiKey = ""; // API Key 設置為空字串，將由運行環境提供
+        const modelUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+        
+        // --- 區塊一：AI 分析邏輯 ---
+        const analyzeButton = document.getElementById('analyzeButton');
+        const aiPrompt = document.getElementById('aiPrompt');
+        const analysisText = document.getElementById('analysisText');
+        const sourceList = document.getElementById('sourceList');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        // Helper for Exponential Backoff
+        const MAX_RETRIES = 5;
+
+        // Helper function for fetching with retry logic
+        async function fetchWithRetry(url, options, retries = 0) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                if (retries < MAX_RETRIES) {
+                    const delay = Math.pow(2, retries) * 1000;
+                    // console.log(`Retrying after ${delay}ms... (Attempt ${retries + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithRetry(url, options, retries + 1);
+                }
+                throw error;
+            }
         }
 
-        /**
-         * 渲染K線和VSA分析結果
-         * @param {string} containerId - DOM ID
-         * @param {Array<Object>} data - KLineAnalysis or VSAAnalysis array
-         */
-        function renderAnalysisResults(containerId, data) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-
-            if (data.length === 1 && data[0].Message) {
-                container.innerHTML = `<p class="text-gray-500 text-center py-4">${data[0].Message}</p>`;
+        async function analyzeTrend() {
+            const userQuery = aiPrompt.value.trim();
+            if (!userQuery) {
+                analysisText.textContent = "請輸入有效的查詢內容。";
                 return;
             }
 
-            container.innerHTML = data.map(item => {
-                const signal = item.Pattern || item.VSA_Signal;
-                const date = item.Date;
-                const close = item.Close.toFixed(2);
-                
-                let signalColor = 'text-gray-300';
-                if (signal.includes('多頭') || signal.includes('需求')) signalColor = 'text-green-400';
-                if (signal.includes('空頭') || signal.includes('供應')) signalColor = 'text-red-400';
+            // UI feedback
+            analyzeButton.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            analysisText.textContent = "正在進行市場分析，請稍候...";
+            sourceList.innerHTML = '';
 
-                return `
-                    <div class="flex justify-between p-3 bg-gray-700/50 rounded-lg transition-colors hover:bg-gray-700">
-                        <span class="text-sm text-gray-400">${date} @ $${close}</span>
-                        <span class="font-medium ${signalColor}">${signal}</span>
-                    </div>
-                `;
-            }).join('');
+            const systemPrompt = "您是一位專門且中立的金融市場趨勢分析師。請基於最新的市場資訊和數據，提供關於使用者查詢標的物的趨勢分析，重點關注近期動能和結構性變化，並以一個精簡、專業的單一自然段落中文總結。";
+            
+            // Construct the payload
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }], // 啟用 Google 搜尋接地
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            const options = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            };
+
+            try {
+                const result = await fetchWithRetry(`${modelUrl}?key=${apiKey}`, options);
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    const text = candidate.content.parts[0].text;
+                    analysisText.textContent = text;
+
+                    // Extract grounding sources
+                    let sources = [];
+                    const groundingMetadata = candidate.groundingMetadata;
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                        sources = groundingMetadata.groundingAttributions
+                            .map(attribution => ({
+                                uri: attribution.web?.uri,
+                                title: attribution.web?.title,
+                            }))
+                            .filter(source => source.uri && source.title); // Ensure sources are valid
+                    }
+
+                    // Display sources
+                    if (sources.length > 0) {
+                        sourceList.innerHTML = sources.map((s, index) => `
+                            <li>
+                                <a href="${s.uri}" target="_blank" class="text-blue-400 hover:text-blue-300 transition duration-150 truncate block">${index + 1}. ${s.title}</a>
+                            </li>
+                        `).join('');
+                    } else {
+                        sourceList.innerHTML = '<li>無外部資料來源引用。</li>';
+                    }
+
+                } else {
+                    analysisText.textContent = "未能生成有效的分析結果。請嘗試調整查詢內容。";
+                }
+
+            } catch (error) {
+                console.error("API 呼叫失敗:", error);
+                analysisText.textContent = `API 呼叫失敗，請檢查網路或稍後重試。錯誤: ${error.message}`;
+            } finally {
+                // Reset UI state
+                analyzeButton.disabled = false;
+                loadingSpinner.classList.add('hidden');
+            }
         }
 
-        /**
-         * 渲染數據片段表格
-         */
-        function renderDataSnippet() {
-            const data = analysisData.DataSnippet;
-            const container = document.getElementById('data-snippet');
-            if (!container || !data.length) return;
+        analyzeButton.addEventListener('click', analyzeTrend);
 
-            const tableHeader = `
-                <table class="min-w-full text-left text-sm text-gray-300">
-                    <thead class="text-xs uppercase bg-gray-700/80">
-                        <tr>
-                            <th scope="col" class="py-3 px-4 rounded-tl-lg">日期</th>
-                            <th scope="col" class="py-3 px-4 text-right">收盤價</th>
-                            <th scope="col" class="py-3 px-4 text-right">成交量</th>
-                            <th scope="col" class="py-3 px-4 rounded-tr-lg text-right">ATR (14)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
 
-            const tableRows = data.map(row => `
-                <tr class="border-b border-gray-700 hover:bg-gray-700/30 transition-colors">
-                    <td class="py-3 px-4 font-medium">${row.Date}</td>
-                    <td class="py-3 px-4 text-right">$${row.Close.toFixed(2)}</td>
-                    <td class="py-3 px-4 text-right">${row.Volume.toLocaleString()}</td>
-                    <td class="py-3 px-4 text-right text-yellow-400">${row.ATR.toFixed(4)}</td>
-                </tr>
-            `).join('');
+        // --- 區塊二：專業操盤計算器邏輯 ---
+        const inputs = ['entryPrice', 'swingAnchor', 'atrValue', 'atrMultiplier', 'tpTarget'];
+        const resultsDiv = document.getElementById('results');
+        const rrValidationDiv = document.getElementById('rrValidation');
+        const tradingDirection = 'LONG'; // 固定為多單 LONG 範例
 
-            const tableFooter = `
-                    </tbody>
-                </table>
-            `;
+        // Helper function to format numbers to 2 decimal places
+        const formatCurrency = (num) => parseFloat(num).toFixed(2);
 
-            container.innerHTML = tableHeader + tableRows + tableFooter;
-        }
+        function calculateStrategy() {
+            const entryPrice = parseFloat(document.getElementById('entryPrice').value);
+            const swingAnchor = parseFloat(document.getElementById('swingAnchor').value);
+            const atrValue = parseFloat(document.getElementById('atrValue').value);
+            const atrMultiplier = parseFloat(document.getElementById('atrMultiplier').value);
+            const tpTarget = parseFloat(document.getElementById('tpTarget').value);
 
-        // 啟動渲染
-        document.addEventListener('DOMContentLoaded', () => {
-            const strategyContainer = document.getElementById('strategy-cards');
-            if (strategyContainer) {
-                strategyContainer.innerHTML = 
-                    renderStrategyCard('LongEntry') +
-                    renderStrategyCard('ShortEntry');
+            if (isNaN(entryPrice) || isNaN(swingAnchor) || isNaN(atrValue) || isNaN(atrMultiplier) || isNaN(tpTarget)) {
+                resultsDiv.innerHTML = '<p class="text-red-500">請輸入所有有效的數值。</p>';
+                rrValidationDiv.className = 'p-3 rounded-lg text-center font-extrabold text-xl shadow-md';
+                rrValidationDiv.textContent = '等待輸入...';
+                return;
             }
 
-            renderAnalysisResults('kline-analysis', analysisData.KLineAnalysis);
-            renderAnalysisResults('vsa-analysis', analysisData.VSAAnalysis);
-            renderDataSnippet();
+            let structuralSL, atrBuffer, finalSL, risk, reward, rrRatio;
+
+            // 1. 計算 ATR 緩衝區
+            atrBuffer = atrValue * atrMultiplier;
+
+            if (tradingDirection === 'LONG') {
+                // 多單 (買入) 止損應在結構錨點下方
+                structuralSL = swingAnchor;
+                finalSL = structuralSL - atrBuffer;
+                
+                // 計算風險與回報
+                risk = entryPrice - finalSL;
+                reward = tpTarget - entryPrice;
+
+            } else { 
+                // 為了簡化，這裡僅提供 LONG 的計算邏輯。若需 SHORT，請參考註釋。
+                structuralSL = swingAnchor;
+                finalSL = structuralSL + atrBuffer;
+                risk = finalSL - entryPrice;
+                reward = entryPrice - tpTarget;
+            }
+            
+            // 計算風險報酬比 (R:R)
+            rrRatio = risk > 0 ? reward / risk : 0; // 避免除以零
+
+
+            // --- 輸出結果 ---
+            let riskClass = risk > 0 ? 'text-accent-red' : 'text-gray-500';
+            let rewardClass = reward > 0 ? 'text-accent-green' : 'text-gray-500';
+            let rrClass = rrRatio >= 2.0 ? 'bg-accent-green text-white' : (rrRatio >= 1.0 ? 'bg-yellow-500 text-gray-900' : 'bg-accent-red text-white');
+
+            resultsDiv.innerHTML = `
+                <div class="flex justify-between border-b border-gray-700 py-2">
+                    <span class="font-semibold text-gray-300">ATR 緩衝值 (${atrMultiplier}x)</span>
+                    <span class="font-mono text-lg">${formatCurrency(atrBuffer)}</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 py-2">
+                    <span class="font-semibold text-gray-300">結構止損錨點 (Swing Low)</span>
+                    <span class="font-mono text-lg">${formatCurrency(structuralSL)}</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 py-2">
+                    <span class="font-semibold text-gray-300">最終止損價位 (Final SL)</span>
+                    <span class="font-extrabold text-lg text-accent-red">${formatCurrency(finalSL)}</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 py-2">
+                    <span class="font-semibold text-gray-300">單次交易風險 (Risk)</span>
+                    <span class="font-extrabold text-lg ${riskClass}">-${formatCurrency(risk)}</span>
+                </div>
+                <div class="flex justify-between py-2">
+                    <span class="font-semibold text-gray-300">潛在回報 (Reward to TP2)</span>
+                    <span class="font-extrabold text-lg ${rewardClass}">+${formatCurrency(reward)}</span>
+                </div>
+            `;
+            
+            // --- R:R 驗證區 ---
+            rrValidationDiv.className = `p-4 rounded-lg text-center font-extrabold text-xl shadow-lg mt-6 ${rrClass}`;
+            rrValidationDiv.innerHTML = `
+                <span class="block text-sm font-medium mb-1">風險報酬比 (R:R Ratio)</span>
+                <span class="block text-3xl">${formatCurrency(rrRatio)} : 1</span>
+                <span class="block text-sm mt-2">${rrRatio >= 2.0 ? '✅ 符合專業高於 1:2 的標準' : (rrRatio >= 1.0 ? '⚠️ R:R 低於 2，需審慎評估' : '❌ 風險大於回報，不建議開單')}</span>
+            `;
+        }
+
+        // Add event listeners to all calculator input fields
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', calculateStrategy);
         });
+
+        // Initial calculation on load
+        window.onload = calculateStrategy;
+
     </script>
 </body>
 </html>
