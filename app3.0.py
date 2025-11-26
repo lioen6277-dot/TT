@@ -1,329 +1,269 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 趨勢分析與專業操盤計算器</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
-                    },
-                    colors: {
-                        'primary-dark': '#1e293b',
-                        'secondary-light': '#f8fafc',
-                        'accent-green': '#10b981', // Emerald green for reward
-                        'accent-red': '#ef4444',   // Red for risk
-                        'accent-blue': '#3b82f6',  // Blue for AI
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
-    </style>
-</head>
-<body class="bg-gray-900 text-secondary-light min-h-screen p-4 sm:p-8">
+import streamlit as st
+import requests
+import time
+import json
+from urllib.parse import urlparse
 
-    <div class="max-w-6xl mx-auto">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-white mb-2">AI 趨勢分析與專業策略驗證</h1>
-            <p class="text-gray-400">宏觀趨勢定性 (AI) 結合微觀結構風控 (計算器)</p>
-        </header>
+# --- 1. 配置與常數 ---
+# 警告: 在實際部署時，請將 API Key 設置為 Streamlit Secrets 或環境變數
+API_KEY = "" # 請在此處填入您的 Gemini API Key
+MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent"
+MAX_RETRIES = 5
 
-        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+# --- 2. 輔助函式: 帶有指數退避的 API 呼叫 ---
 
-            <!-- 左側區塊：AI 趨勢分析器 (佔 3/5 寬度) -->
-            <div class="lg:col-span-3 bg-primary-dark p-6 sm:p-8 rounded-xl shadow-2xl space-y-6">
-                <h2 class="text-2xl font-bold border-b border-gray-700 pb-3 text-accent-blue flex items-center">
-                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-4-4m5-4a5 5 0 11-10 0 5 5 0 0110 0zm0 0l-1.5-1.5m1.5 1.5l1.5-1.5M10.5 13.5l1.5-1.5m-1.5 1.5l1.5 1.5"></path></svg>
-                    區塊一：AI 趨勢判斷與市場定性 (RSI / MACD 輔助)
-                </h2>
+def fetch_with_retry(url, headers, payload, max_retries=MAX_RETRIES):
+    """使用指數退避策略調用 Gemini API"""
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            response.raise_for_status() # 對於 4xx/5xx 狀態碼拋出異常
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code in [429, 500, 503] and attempt < max_retries - 1:
+                delay = 2 ** attempt
+                # print(f"API 呼叫失敗 ({response.status_code})。將在 {delay} 秒後重試...")
+                time.sleep(delay)
+            else:
+                # 重新拋出錯誤，或處理最終失敗
+                st.error(f"API 呼叫在 {max_retries} 次嘗試後仍失敗。錯誤: {e}")
+                return None
+        except requests.exceptions.RequestException as e:
+            st.error(f"網絡請求錯誤: {e}")
+            return None
+    return None
 
-                <div>
-                    <label for="aiPrompt" class="block text-sm font-medium mb-1">輸入您想分析的標的物或市場問題（例如：TSLA, BTC, 黃金的最新季度表現）</label>
-                    <textarea id="aiPrompt" rows="3" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-blue focus:border-accent-blue transition duration-150 resize-y" placeholder="請輸入分析指令..."></textarea>
-                </div>
+# --- 3. 核心邏輯: AI 分析 (Gemini API) ---
 
-                <button id="analyzeButton" class="w-full py-3 bg-accent-blue hover:bg-blue-600 text-white font-bold rounded-lg transition duration-200 flex items-center justify-center">
-                    <svg class="w-5 h-5 mr-2 animate-spin hidden" id="loadingSpinner" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m15.356-2A8.001 8.001 0 004.582 15m15.356-2H12"></path></svg>
-                    開始 AI 趨勢分析
-                </button>
+def get_ai_analysis(query):
+    """調用 Gemini API 進行市場趨勢分析並啟用 Google Search 接地"""
+    if not API_KEY:
+        st.warning("請在程式碼中填入您的 API_KEY 才能啟用 AI 分析功能。")
+        return "API Key 未設置，AI 分析功能無法使用。", []
 
-                <div id="aiResults" class="mt-6 p-4 bg-gray-800 rounded-lg min-h-[150px]">
-                    <h3 class="text-xl font-semibold mb-3 text-yellow-300">分析結果</h3>
-                    <p id="analysisText" class="text-gray-300">AI 分析結果將顯示在此處。請務必結合您的 RSI/MACD 分析進行趨勢定性。</p>
-                    <div id="citations" class="mt-4 border-t border-gray-700 pt-3">
-                        <p class="text-sm text-gray-500 font-medium">資料來源 (Grounding Sources):</p>
-                        <ul id="sourceList" class="list-disc list-inside text-xs text-gray-400 mt-1 space-y-1">
-                            <!-- 來源將在此處顯示 -->
-                        </ul>
-                    </div>
-                </div>
-            </div>
+    system_prompt = "您是一位專門且中立的金融市場趨勢分析師。請基於最新的市場資訊和數據，提供關於使用者查詢標的物的趨勢分析，重點關注近期動能和結構性變化，並以一個精簡、專業的單一自然段落中文總結。使用 Markdown 格式化輸出。"
+    
+    payload = {
+        "contents": [{"parts": [{"text": query}]}],
+        "tools": [{"google_search": {}}], # 啟用 Google 搜尋接地
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+    }
 
-            <!-- 右側區塊：策略計算器 (佔 2/5 寬度) -->
-            <div class="lg:col-span-2 bg-primary-dark p-6 sm:p-8 rounded-xl shadow-2xl space-y-6">
-                <h2 class="text-2xl font-bold border-b border-gray-700 pb-3 text-yellow-400 flex items-center">
-                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0 0V8m0 4v2m0 0V8m0 4c-1.657 0-3-.895-3-2s1.343-2 3-2V8"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h.01M17 7h.01M7 7h.01M7 17h.01M12 7h.01M12 17h.01M17 12h.01M7 12h.01M12 12h.01"></path></svg>
-                    區塊二：風控與目標設定驗證
-                </h2>
+    url_with_key = f"{MODEL_URL}?key={API_KEY}"
+    headers = {'Content-Type': 'application/json'}
+    
+    with st.spinner("⏳ 正在進行 AI 趨勢分析..."):
+        result = fetch_with_retry(url_with_key, headers, payload)
 
-                <!-- 輸入區 Input Section -->
-                <div class="space-y-4">
-                    <!-- 開單價位 Entry Price -->
-                    <div>
-                        <label for="entryPrice" class="block text-sm font-medium mb-1">1. 開單價位 (Entry)</label>
-                        <input type="number" id="entryPrice" value="100.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
-                    </div>
+    if not result:
+        return "分析失敗，請檢查 API Key 或網路連線。", []
 
-                    <!-- 結構止損錨定 Structural Anchor for SL -->
-                    <div>
-                        <label for="swingAnchor" class="block text-sm font-medium mb-1">2. 止損結構錨點 (前一個有效震盪低點)</label>
-                        <input type="number" id="swingAnchor" value="95.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
-                    </div>
-
-                    <!-- ATR 緩衝設定 ATR Buffer -->
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label for="atrValue" class="block text-sm font-medium mb-1">3. ATR 波動值</label>
-                            <input type="number" id="atrValue" value="0.50" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
-                        </div>
-                        <div>
-                            <label for="atrMultiplier" class="block text-sm font-medium mb-1">4. ATR 緩衝倍數 (例如 1.5)</label>
-                            <input type="number" id="atrMultiplier" value="1.50" step="0.1" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
-                        </div>
-                    </div>
-
-                    <!-- 止盈目標 Take Profit Target -->
-                    <div>
-                        <label for="tpTarget" class="block text-sm font-medium mb-1">5. 主要止盈目標 (TP2, 例如 1.618 擴展)</label>
-                        <input type="number" id="tpTarget" value="125.00" step="0.01" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-lg focus:ring-accent-green focus:border-accent-green">
-                    </div>
-                </div>
-
-                <!-- 結果區 Result Section -->
-                <div id="results" class="bg-gray-800 p-5 rounded-lg shadow-inner space-y-4">
-                    <!-- 計算結果將在這裡顯示 -->
-                </div>
-
-                <div id="rrValidation" class="p-3 rounded-lg text-center font-extrabold text-xl shadow-md">
-                    <!-- R:R 驗證結果 -->
-                </div>
-            </div>
-
-        </main>
-    </div>
-
-    <script>
-        const apiKey = ""; // API Key 設置為空字串，將由運行環境提供
-        const modelUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+    try:
+        candidate = result.get('candidates', [{}])[0]
+        text = candidate.get('content', {}).get('parts', [{}])[0].get('text', '未能獲取分析文本。')
         
-        // --- 區塊一：AI 分析邏輯 ---
-        const analyzeButton = document.getElementById('analyzeButton');
-        const aiPrompt = document.getElementById('aiPrompt');
-        const analysisText = document.getElementById('analysisText');
-        const sourceList = document.getElementById('sourceList');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-
-        // Helper for Exponential Backoff
-        const MAX_RETRIES = 5;
-
-        // Helper function for fetching with retry logic
-        async function fetchWithRetry(url, options, retries = 0) {
-            try {
-                const response = await fetch(url, options);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+        # 提取資料來源 (Grounding Sources)
+        sources = []
+        grounding_metadata = candidate.get('groundingMetadata', {})
+        if grounding_metadata and grounding_metadata.get('groundingAttributions'):
+            sources = [
+                {
+                    'uri': attr.get('web', {}).get('uri'),
+                    'title': attr.get('web', {}).get('title')
                 }
-                return await response.json();
-            } catch (error) {
-                if (retries < MAX_RETRIES) {
-                    const delay = Math.pow(2, retries) * 1000;
-                    // console.log(`Retrying after ${delay}ms... (Attempt ${retries + 1})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithRetry(url, options, retries + 1);
-                }
-                throw error;
-            }
-        }
+                for attr in grounding_metadata['groundingAttributions']
+                if attr.get('web', {}).get('uri') and attr.get('web', {}).get('title')
+            ]
+        
+        return text, sources
 
-        async function analyzeTrend() {
-            const userQuery = aiPrompt.value.trim();
-            if (!userQuery) {
-                analysisText.textContent = "請輸入有效的查詢內容。";
-                return;
-            }
+    except Exception as e:
+        st.error(f"處理 API 回應時發生錯誤: {e}")
+        return "回應解析失敗。", []
 
-            // UI feedback
-            analyzeButton.disabled = true;
-            loadingSpinner.classList.remove('hidden');
-            analysisText.textContent = "正在進行市場分析，請稍候...";
-            sourceList.innerHTML = '';
+# --- 4. 核心邏輯: 專業操盤計算器 ---
 
-            const systemPrompt = "您是一位專門且中立的金融市場趨勢分析師。請基於最新的市場資訊和數據，提供關於使用者查詢標的物的趨勢分析，重點關注近期動能和結構性變化，並以一個精簡、專業的單一自然段落中文總結。";
-            
-            // Construct the payload
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                tools: [{ "google_search": {} }], // 啟用 Google 搜尋接地
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-            };
+def calculate_rr_ratio(entry_price, swing_anchor, atr_value, atr_multiplier, tp_target, is_long=True):
+    """計算最終止損價位、風險、回報和風險報酬比 (R:R)"""
+    
+    # 1. 計算 ATR 緩衝區
+    atr_buffer = atr_value * atr_multiplier
 
-            const options = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            };
+    if is_long:
+        # 多單 (買入): 止損在結構錨點下方，止盈在開單價位上方
+        structural_sl = swing_anchor
+        final_sl = structural_sl - atr_buffer
+        
+        # 風險: 入場價到最終止損價的距離 (正值)
+        risk = entry_price - final_sl
+        # 回報: 止盈目標價到入場價的距離 (正值)
+        reward = tp_target - entry_price
+        
+    else: # 賣空 (Short)
+        # 賣空: 止損在結構錨點上方，止盈在開單價位下方
+        structural_sl = swing_anchor
+        final_sl = structural_sl + atr_buffer
+        
+        # 風險: 最終止損價到入場價的距離 (正值)
+        risk = final_sl - entry_price
+        # 回報: 入場價到止盈目標價的距離 (正值)
+        reward = entry_price - tp_target
+    
+    # 計算風險報酬比 (R:R)
+    # 確保風險和回報都是正值，且風險 > 0
+    risk = max(0, risk)
+    reward = max(0, reward)
+    rr_ratio = reward / risk if risk > 0 else 0
 
-            try {
-                const result = await fetchWithRetry(`${modelUrl}?key=${apiKey}`, options);
-                const candidate = result.candidates?.[0];
+    return final_sl, risk, reward, rr_ratio
 
-                if (candidate && candidate.content?.parts?.[0]?.text) {
-                    const text = candidate.content.parts[0].text;
-                    analysisText.textContent = text;
+# --- 5. Streamlit 應用程式佈局 ---
 
-                    // Extract grounding sources
-                    let sources = [];
-                    const groundingMetadata = candidate.groundingMetadata;
-                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
-                        sources = groundingMetadata.groundingAttributions
-                            .map(attribution => ({
-                                uri: attribution.web?.uri,
-                                title: attribution.web?.title,
-                            }))
-                            .filter(source => source.uri && source.title); // Ensure sources are valid
-                    }
+def main():
+    st.set_page_config(
+        page_title="AI 趨勢分析與專業操盤策略框架",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
-                    // Display sources
-                    if (sources.length > 0) {
-                        sourceList.innerHTML = sources.map((s, index) => `
-                            <li>
-                                <a href="${s.uri}" target="_blank" class="text-blue-400 hover:text-blue-300 transition duration-150 truncate block">${index + 1}. ${s.title}</a>
-                            </li>
-                        `).join('');
-                    } else {
-                        sourceList.innerHTML = '<li>無外部資料來源引用。</li>';
-                    }
+    st.title("📈 AI 趨勢分析與專業策略驗證器")
+    st.markdown("---")
 
-                } else {
-                    analysisText.textContent = "未能生成有效的分析結果。請嘗試調整查詢內容。";
-                }
+    col_trend, col_calc = st.columns([3, 2], gap="large")
 
-            } catch (error) {
-                console.error("API 呼叫失敗:", error);
-                analysisText.textContent = `API 呼叫失敗，請檢查網路或稍後重試。錯誤: ${error.message}`;
-            } finally {
-                // Reset UI state
-                analyzeButton.disabled = false;
-                loadingSpinner.classList.add('hidden');
-            }
-        }
+    # ===============================================
+    # 區塊一: AI 趨勢分析 (佔 3/5 寬度)
+    # ===============================================
+    with col_trend:
+        st.header("🔮 區塊一: AI 趨勢判斷與市場定性")
+        st.markdown("輸入標的物名稱（例如：`NASDAQ 100 最新季度走勢`、`TSLA 股價潛力`），讓 AI 提供客觀的趨勢分析。")
 
-        analyzeButton.addEventListener('click', analyzeTrend);
+        # 交易方向選擇（影響計算器邏輯，但 AI 分析不直接需要）
+        direction = st.radio(
+            "選擇交易方向：",
+            ["做多 (Long)", "做空 (Short)"],
+            horizontal=True,
+            help="選擇此方向將應用於右側的風險報酬計算。"
+        )
+        is_long = direction == "做多 (Long)"
+        
+        ai_prompt = st.text_area(
+            "輸入 AI 分析指令:",
+            placeholder="例如: 蘋果公司 (AAPL) 在未來六個月的潛在走勢和風險因素。",
+            height=100
+        )
 
-
-        // --- 區塊二：專業操盤計算器邏輯 ---
-        const inputs = ['entryPrice', 'swingAnchor', 'atrValue', 'atrMultiplier', 'tpTarget'];
-        const resultsDiv = document.getElementById('results');
-        const rrValidationDiv = document.getElementById('rrValidation');
-        const tradingDirection = 'LONG'; // 固定為多單 LONG 範例
-
-        // Helper function to format numbers to 2 decimal places
-        const formatCurrency = (num) => parseFloat(num).toFixed(2);
-
-        function calculateStrategy() {
-            const entryPrice = parseFloat(document.getElementById('entryPrice').value);
-            const swingAnchor = parseFloat(document.getElementById('swingAnchor').value);
-            const atrValue = parseFloat(document.getElementById('atrValue').value);
-            const atrMultiplier = parseFloat(document.getElementById('atrMultiplier').value);
-            const tpTarget = parseFloat(document.getElementById('tpTarget').value);
-
-            if (isNaN(entryPrice) || isNaN(swingAnchor) || isNaN(atrValue) || isNaN(atrMultiplier) || isNaN(tpTarget)) {
-                resultsDiv.innerHTML = '<p class="text-red-500">請輸入所有有效的數值。</p>';
-                rrValidationDiv.className = 'p-3 rounded-lg text-center font-extrabold text-xl shadow-md';
-                rrValidationDiv.textContent = '等待輸入...';
-                return;
-            }
-
-            let structuralSL, atrBuffer, finalSL, risk, reward, rrRatio;
-
-            // 1. 計算 ATR 緩衝區
-            atrBuffer = atrValue * atrMultiplier;
-
-            if (tradingDirection === 'LONG') {
-                // 多單 (買入) 止損應在結構錨點下方
-                structuralSL = swingAnchor;
-                finalSL = structuralSL - atrBuffer;
+        if st.button("🚀 開始 AI 趨勢分析"):
+            if ai_prompt:
+                analysis_text, sources = get_ai_analysis(ai_prompt)
                 
-                // 計算風險與回報
-                risk = entryPrice - finalSL;
-                reward = tpTarget - entryPrice;
+                st.session_state['analysis_text'] = analysis_text
+                st.session_state['sources'] = sources
+            else:
+                st.warning("請輸入有效的查詢內容。")
 
-            } else { 
-                // 為了簡化，這裡僅提供 LONG 的計算邏輯。若需 SHORT，請參考註釋。
-                structuralSL = swingAnchor;
-                finalSL = structuralSL + atrBuffer;
-                risk = finalSL - entryPrice;
-                reward = entryPrice - tpTarget;
-            }
+        st.subheader("分析結果")
+        if 'analysis_text' in st.session_state:
+            st.markdown(st.session_state['analysis_text'])
             
-            // 計算風險報酬比 (R:R)
-            rrRatio = risk > 0 ? reward / risk : 0; // 避免除以零
+            st.markdown("---")
+            st.markdown("**資料來源 (Grounding Sources):**")
+            if 'sources' in st.session_state and st.session_state['sources']:
+                for idx, source in enumerate(st.session_state['sources']):
+                    if source['uri'] and source['title']:
+                        st.markdown(f"- {idx + 1}. [{source['title']}]({source['uri']})")
+            else:
+                st.markdown("- 無外部資料來源引用。")
+        else:
+            st.info("AI 分析結果將顯示在此處。")
 
 
-            // --- 輸出結果 ---
-            let riskClass = risk > 0 ? 'text-accent-red' : 'text-gray-500';
-            let rewardClass = reward > 0 ? 'text-accent-green' : 'text-gray-500';
-            let rrClass = rrRatio >= 2.0 ? 'bg-accent-green text-white' : (rrRatio >= 1.0 ? 'bg-yellow-500 text-gray-900' : 'bg-accent-red text-white');
+    # ===============================================
+    # 區塊二: 風控與目標設定驗證 (佔 2/5 寬度)
+    # ===============================================
+    with col_calc:
+        st.header("💰 區塊二: 風控與目標設定驗證")
+        st.markdown("專業交易策略的基石：用結構錨點和波動率 (ATR) 驗證您的 R:R 比例。")
 
-            resultsDiv.innerHTML = `
-                <div class="flex justify-between border-b border-gray-700 py-2">
-                    <span class="font-semibold text-gray-300">ATR 緩衝值 (${atrMultiplier}x)</span>
-                    <span class="font-mono text-lg">${formatCurrency(atrBuffer)}</span>
-                </div>
-                <div class="flex justify-between border-b border-gray-700 py-2">
-                    <span class="font-semibold text-gray-300">結構止損錨點 (Swing Low)</span>
-                    <span class="font-mono text-lg">${formatCurrency(structuralSL)}</span>
-                </div>
-                <div class="flex justify-between border-b border-gray-700 py-2">
-                    <span class="font-semibold text-gray-300">最終止損價位 (Final SL)</span>
-                    <span class="font-extrabold text-lg text-accent-red">${formatCurrency(finalSL)}</span>
-                </div>
-                <div class="flex justify-between border-b border-gray-700 py-2">
-                    <span class="font-semibold text-gray-300">單次交易風險 (Risk)</span>
-                    <span class="font-extrabold text-lg ${riskClass}">-${formatCurrency(risk)}</span>
-                </div>
-                <div class="flex justify-between py-2">
-                    <span class="font-semibold text-gray-300">潛在回報 (Reward to TP2)</span>
-                    <span class="font-extrabold text-lg ${rewardClass}">+${formatCurrency(reward)}</span>
-                </div>
-            `;
+        # --- 輸入參數 ---
+        st.subheader("輸入參數")
+        
+        col_input_1, col_input_2 = st.columns(2)
+        
+        with col_input_1:
+            entry_price = st.number_input("1. 開單價位 (Entry Price):", value=100.00, min_value=0.01, step=0.01, format="%.2f", help="您的預期入場價格")
+            atr_value = st.number_input("3. ATR 波動值 (Value):", value=0.50, min_value=0.01, step=0.01, format="%.2f", help="例如 14 週期 ATR 的數值")
+        
+        with col_input_2:
+            swing_anchor = st.number_input(
+                f"2. 止損結構錨點 ({'低點' if is_long else '高點'}):", 
+                value=95.00 if is_long else 105.00, 
+                min_value=0.01, 
+                step=0.01, 
+                format="%.2f",
+                help=f"用於止損的結構點（做多為前低點，做空為前高點）"
+            )
+            atr_multiplier = st.number_input("4. ATR 緩衝倍數 (Multiplier):", value=1.5, min_value=0.1, step=0.1, format="%.1f", help="您願意為緩衝區設定的 ATR 倍數 (通常為 1.5 - 2.0)")
             
-            // --- R:R 驗證區 ---
-            rrValidationDiv.className = `p-4 rounded-lg text-center font-extrabold text-xl shadow-lg mt-6 ${rrClass}`;
-            rrValidationDiv.innerHTML = `
-                <span class="block text-sm font-medium mb-1">風險報酬比 (R:R Ratio)</span>
-                <span class="block text-3xl">${formatCurrency(rrRatio)} : 1</span>
-                <span class="block text-sm mt-2">${rrRatio >= 2.0 ? '✅ 符合專業高於 1:2 的標準' : (rrRatio >= 1.0 ? '⚠️ R:R 低於 2，需審慎評估' : '❌ 風險大於回報，不建議開單')}</span>
-            `;
-        }
+        tp_target = st.number_input("5. 主要止盈目標 (TP Target):", value=125.00, min_value=0.01, step=0.01, format="%.2f", help="例如 Fibonacci 擴展 1.618 或關鍵阻力位")
 
-        // Add event listeners to all calculator input fields
-        inputs.forEach(id => {
-            document.getElementById(id).addEventListener('input', calculateStrategy);
-        });
+        # --- 計算並顯示結果 ---
+        final_sl, risk, reward, rr_ratio = calculate_rr_ratio(
+            entry_price, swing_anchor, atr_value, atr_multiplier, tp_target, is_long
+        )
 
-        // Initial calculation on load
-        window.onload = calculateStrategy;
+        st.markdown("---")
+        st.subheader("計算結果與驗證")
 
-    </script>
-</body>
-</html>
+        # R:R 驗證結果
+        rr_color = "green" if rr_ratio >= 2.0 else ("orange" if rr_ratio >= 1.0 else "red")
+        rr_emoji = "✅" if rr_ratio >= 2.0 else ("⚠️" if rr_ratio >= 1.0 else "❌")
+        rr_message = ""
+        
+        if rr_ratio >= 2.0:
+            rr_message = "符合專業交易標準 (R:R ≥ 2.0)。"
+        elif rr_ratio >= 1.0:
+            rr_message = "風險報酬比低於 2.0，需審慎評估。建議尋找更高的止盈目標或更緊密的結構。 "
+        else:
+            rr_message = "風險大於回報，不建議開單。"
+
+        st.markdown(
+            f"<div style='background-color: {'#166534' if rr_color == 'green' else ('#f59e0b' if rr_color == 'orange' else '#b91c1c')}; padding: 15px; border-radius: 10px; text-align: center; color: white; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>"
+            f"<p style='font-size: 16px; margin: 0;'>風險報酬比 (R:R Ratio)</p>"
+            f"<p style='font-size: 32px; margin: 5px 0 0;'>{rr_emoji} {rr_ratio:.2f} : 1</p>"
+            f"<p style='font-size: 14px; margin-top: 5px;'>{rr_message}</p>"
+            f"</div>", 
+            unsafe_allow_html=True
+        )
+
+        st.markdown("---")
+
+        col_result_1, col_result_2 = st.columns(2)
+        
+        # 結果詳細數據
+        col_result_1.metric(
+            "最終止損價位 (SL)", 
+            f"${final_sl:.2f}", 
+            help=f"結構錨點 ({swing_anchor:.2f}) 加上/減去 ATR 緩衝 ({atr_multiplier}x{atr_value:.2f}={atr_value * atr_multiplier:.2f})"
+        )
+        col_result_1.metric(
+            "單次交易風險 (Risk)", 
+            f"${risk:.2f}", 
+            delta_color="inverse",
+            delta=f"佔入場價 {(risk / entry_price * 100):.2f}%"
+        )
+        
+        col_result_2.metric(
+            "潛在回報 (Reward)", 
+            f"${reward:.2f}",
+            delta_color="normal",
+            delta=f"佔入場價 {(reward / entry_price * 100):.2f}%"
+        )
+        col_result_2.metric(
+            "總回報目標 (TP Target)", 
+            f"${tp_target:.2f}"
+        )
+
+
+if __name__ == "__main__":
+    main()
