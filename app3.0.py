@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Orbital Command: Tactical Scan (O.C.T.S.) - V4.3 Terran Edition (優化版)
+軌道司令部：戰術掃描 (O.C.T.S.) - V4.3 泰倫優化版
 前身：AI 專業操盤策略系統
-風格：StarCraft II Terran UI Theme
+風格：StarCraft II Terran UI Theme (泰倫人族介面風格)
 
 功能特色：
 1. 繼承 V4.2 所有核心功能 (VRVP, Fib, EMA200)
-2. 全面泰倫人族介面風格 (Terran Naming Convention)
+2. 全面泰倫人族介面風格 (Terran Naming Convention)，所有 UI 元素皆為中文顯示。
 3. 副官 (Adjutant) 風格的戰術報告
 4. 【V4.3 升級】：部署座標 (Entry) 改為斐波那契 0.618 點位，止損邏輯強化。
 
@@ -26,7 +26,7 @@ from plotly.subplots import make_subplots
 # ==============================================================================
 
 st.set_page_config(
-    page_title="Orbital Command (O.C.T.S.)",
+    page_title="軌道司令部 (O.C.T.S.)", # 標題已中文化
     page_icon="🛰️", # 軌道掃描圖示
     layout="wide"
 )
@@ -137,16 +137,16 @@ FULL_SYMBOLS_MAP = {
 }
 
 CATEGORY_MAP = {
-    "US Sector (美股)": [k for k in FULL_SYMBOLS_MAP if not k.endswith((".TW", "-USD")) and not k.startswith("^")],
-    "TW Sector (台股)": [k for k in FULL_SYMBOLS_MAP if k.endswith(".TW") or k.startswith("^TWII")],
-    "Crypto Sector (加密)": [k for k in FULL_SYMBOLS_MAP if k.endswith("-USD")]
+    "美股星區": [k for k in FULL_SYMBOLS_MAP if not k.endswith((".TW", "-USD")) and not k.startswith("^")],
+    "台股星區": [k for k in FULL_SYMBOLS_MAP if k.endswith(".TW") or k.startswith("^TWII")],
+    "加密星區": [k for k in FULL_SYMBOLS_MAP if k.endswith("-USD")]
 }
 
 PERIOD_MAP = {
-    "Tactical (15m 短線)": ("1mo", "15m"),
-    "Operational (1h 中線)": ("3mo", "60m"),
-    "Strategic (4h 長線)": ("1y", "60m"),
-    "Global (1d 日線)": ("2y", "1d")
+    "戰術級 (15分 短線)": ("1mo", "15m"),
+    "作戰級 (1小時 中線)": ("3mo", "60m"),
+    "戰略級 (4小時 長線)": ("1y", "60m"),
+    "全球級 (1日 日線)": ("2y", "1d")
 }
 
 # ==============================================================================
@@ -288,18 +288,18 @@ def analyze_strategy(df, fib_data):
     if latest['Volume'] > latest['Vol_SMA']:
         reasons.append("成交量訊號 (Volume) 增強")
     
-    action = "Neutral (觀望)"
+    action = "觀望 (Neutral)" # 已翻譯
     sentiment_color = "neutral"
     
     # 部署建議 (Deployment Recommendation)
     if trend_score >= 1 and in_entry_zone and fib_data['trend'] == "UP":
-        action = "Nuclear Launch Detected (部署多頭)"
+        action = "偵測到核彈發射 (部署多頭)" # 已翻譯
         sentiment_color = "bullish"
     elif trend_score <= -1 and in_entry_zone and fib_data['trend'] == "DOWN":
-        action = "Zerg Rush Detected (部署空頭)"
+        action = "偵測到蟲族爆兵 (部署空頭)" # 已翻譯
         sentiment_color = "bearish"
     elif abs(trend_score) >= 2:
-        action = "Hold Position (順勢持有)"
+        action = "固守陣地 (順勢持有)" # 已翻譯
         sentiment_color = "bullish" if trend_score > 0 else "bearish"
         
     return {'action': action, 'reasons': reasons, 'trend_score': trend_score, 'sentiment': sentiment_color, 'in_zone': in_entry_zone}
@@ -349,7 +349,7 @@ def calculate_trade_setup(df, fib_data, action):
         setup['entry'] = current_price
         return setup
 
-    if risk > 0:
+    if risk > 0 and reward > 0: # 確保至少有潛在盈虧
         setup['rr'] = reward / risk
         setup['valid'] = True
     return setup
@@ -360,6 +360,7 @@ def calculate_trade_setup(df, fib_data, action):
 
 def plot_pro_chart(df, fib_data, symbol_name, vp_data):
     """繪製專業級戰術分析圖"""
+    # 修正圖表標題為全中文
     fig = make_subplots(rows=2, cols=2, 
                         shared_xaxes=True, 
                         vertical_spacing=0.03, 
@@ -367,27 +368,27 @@ def plot_pro_chart(df, fib_data, symbol_name, vp_data):
                         column_widths=[0.85, 0.15],
                         horizontal_spacing=0.02,
                         specs=[[{}, {}], [{"colspan": 2}, None]],
-                        subplot_titles=(f"{symbol_name} :: Sector Scan", "", "MACD Kinetic Energy"))
+                        subplot_titles=(f"{symbol_name} :: 星區掃描", "", "MACD 動能趨勢"))
 
     # 1. K線圖
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'],
-                                 low=df['Low'], close=df['Close'], name='Unit Price'), row=1, col=1)
+                                 low=df['Low'], close=df['Close'], name='單位價格'), row=1, col=1) # 已翻譯
     
     # EMA 趨勢線
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='orange', width=1), name='Trend Line (50)'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='orange', width=1), name='中線趨勢 (50)'), row=1, col=1) # 已翻譯
     if 'EMA_200' in df.columns and not df['EMA_200'].isna().all():
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='purple', width=1, dash='dash'), name='Macro Line (200)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='purple', width=1, dash='dash'), name='宏觀趨勢 (200)'), row=1, col=1) # 已翻譯
     
     # 斐波那契戰術標記
     colors = ['gray', 'skyblue', 'yellow', 'salmon', 'red', 'gray', '#00FF00']
     fib_levels = [
-        ('Apex/Nadir (1.0)', fib_data['levels']['1.0'], colors[5]), # 結構起點 (Nadir/Apex)
-        ('Fib 0.786 (Crit)', fib_data['levels']['0.786'], colors[4]), # 關鍵回調/反彈
-        ('Fib 0.618 (Tac)', fib_data['levels']['0.618'], colors[3]), # 戰術部署點
-        ('Fib 0.500 (PZR)', fib_data['levels']['0.5'], colors[2]),
-        ('Fib 0.382', fib_data['levels']['0.382'], colors[1]),
-        ('Apex/Nadir (0.0)', fib_data['levels']['0.0'], colors[0]), # 結構終點 (Apex/Nadir)
-        ('Obj Alpha (1.618)', fib_data['levels']['Ext_1.618'], colors[6]) # 延伸目標
+        ('結構端點 (1.0)', fib_data['levels']['1.0'], colors[5]), # 結構起點 (Nadir/Apex)
+        ('關鍵點 (0.786)', fib_data['levels']['0.786'], colors[4]), # 關鍵回調/反彈
+        ('部署點 (0.618)', fib_data['levels']['0.618'], colors[3]), # 戰術部署點
+        ('中繼點 (0.500)', fib_data['levels']['0.5'], colors[2]),
+        ('反彈點 (0.382)', fib_data['levels']['0.382'], colors[1]),
+        ('結構起點 (0.0)', fib_data['levels']['0.0'], colors[0]), # 結構終點 (Apex/Nadir)
+        ('目標阿爾法 (1.618)', fib_data['levels']['Ext_1.618'], colors[6]) # 延伸目標
     ]
     
     start_date = df.index[0]
@@ -396,33 +397,33 @@ def plot_pro_chart(df, fib_data, symbol_name, vp_data):
     for label, value, color in fib_levels:
         fig.add_shape(type="line", x0=start_date, y0=value, x1=end_date, y1=value,
                       line=dict(color=color, width=1, dash="dot"), row=1, col=1)
+        # 標註使用中文標籤
         fig.add_annotation(x=end_date, y=value, text=f"{label}",
                            showarrow=False, xanchor="left", font=dict(color=color, size=9), row=1, col=1)
 
     # 2. Volume Signature (VRVP) 成交量分佈
     if vp_data is not None:
-        max_vol = vp_data['volume'].max()
-        # 尋找交易量最大點 (POC - Point of Control)
-        poc_price = vp_data.loc[vp_data['volume'].idxmax(), 'price']
+        # max_vol = vp_data['volume'].max() # POC line is not strictly needed for the bar chart
         
         fig.add_trace(go.Bar(
             y=vp_data['price'], 
             x=vp_data['volume'], 
             orientation='h',
             marker=dict(color=vp_data['volume'], colorscale='Electric', opacity=0.5),
-            name='Density',
+            name='成交量密度', # 已翻譯
             showlegend=False
         ), row=1, col=2)
         
-        # 標記 POC
-        fig.add_shape(type="line", x0=0, x1=max_vol, y0=poc_price, y1=poc_price,
-                      line=dict(color="white", width=1), row=1, col=2)
+        # 標記 POC（最高交易量點）
+        # poc_price = vp_data.loc[vp_data['volume'].idxmax(), 'price']
+        # fig.add_shape(type="line", x0=0, x1=max_vol, y0=poc_price, y1=poc_price,
+        #               line=dict(color="white", width=1), row=1, col=2)
 
     # 3. MACD 動能
     colors_macd = np.where(df['MACD_Hist'] > 0, '#DC3545', '#28A745')
-    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=colors_macd, name='Histogram'), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='#FAFAFA', width=1), name='MACD'), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='#FFA500', width=1), name='Signal'), row=2, col=1)
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=colors_macd, name='柱狀圖'), row=2, col=1) # 已翻譯
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='#FAFAFA', width=1), name='MACD 線'), row=2, col=1) # 已翻譯
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='#FFA500', width=1), name='訊號線'), row=2, col=1) # 已翻譯
 
     # Terran Dark Theme UI 配置
     fig.update_layout(template="plotly_dark", height=750, margin=dict(l=10, r=10, t=40, b=10),
@@ -438,26 +439,30 @@ def plot_pro_chart(df, fib_data, symbol_name, vp_data):
 # ==============================================================================
 
 def main():
-    st.sidebar.header("🛰️ ComSat Station Controls")
+    # 側邊欄標題已翻譯
+    st.sidebar.header("🛰️ 通訊衛星站控制") 
     
-    cat = st.sidebar.selectbox("1. Sector Selector (星區)", list(CATEGORY_MAP.keys()))
+    # 側邊欄選項已翻譯
+    cat = st.sidebar.selectbox("1. 星區選擇", list(CATEGORY_MAP.keys()))
     symbols = CATEGORY_MAP[cat]
     display_symbols = [f"{s} - {FULL_SYMBOLS_MAP[s]['name']}" for s in symbols]
-    selected_display = st.sidebar.selectbox("2. Target Designator (目標)", display_symbols)
+    selected_display = st.sidebar.selectbox("2. 目標指定", display_symbols)
     symbol = selected_display.split(" - ")[0]
     
-    p_label = st.sidebar.selectbox("3. Temporal Frame (時序)", list(PERIOD_MAP.keys()), index=2)
+    p_label = st.sidebar.selectbox("3. 時序框架", list(PERIOD_MAP.keys()), index=2)
     period, interval = PERIOD_MAP[p_label]
     
     st.sidebar.markdown("---")
-    fib_lookback = st.sidebar.slider("📡 Scan Sensitivity (掃描靈敏度)", 
+    fib_lookback = st.sidebar.slider("📡 掃描靈敏度 (回溯K線數)", # 已翻譯
                                      min_value=30, max_value=200, value=100, step=10,
-                                     help="調整掃描儀的波段回溯範圍")
+                                     help="調整斐波那契回調的波段回溯範圍")
     
-    run_btn = st.sidebar.button("☢️ Initiate Scanner Sweep", type="primary")
+    # 按鈕文本已翻譯
+    run_btn = st.sidebar.button("☢️ 啟動掃描程序", type="primary")
 
     if run_btn:
-        with st.spinner(f"📡 Establishing Uplink to {symbol}... Downloading Telemetry..."):
+        # 載入中的文本已翻譯
+        with st.spinner(f"📡 建立上行鏈路至 {symbol}... 正在下載遙測數據..."):
             df = get_data(symbol, period, interval)
             
             if df is not None and len(df) > fib_lookback:
@@ -465,7 +470,8 @@ def main():
                 fib_data = find_fibonacci_levels(df, lookback=fib_lookback)
                 
                 if fib_data is None:
-                    st.error("Signal Lost: Cannot identify structure. Adjust Sensitivity.")
+                    # 錯誤信息已翻譯
+                    st.error("信號丟失：無法識別結構。請調整掃描靈敏度。")
                     return
 
                 analysis = analyze_strategy(df, fib_data)
@@ -486,29 +492,30 @@ def main():
                     st.markdown(f"""
                     <div class="trade-card-container">
                         <div class="trade-card glow-entry">
-                            <div class="card-title">Deployment Coords</div>
+                            <div class="card-title">部署座標</div>
                             <div class="card-value text-entry">${setup['entry']:,.2f}</div>
-                            <div class="card-sub">Tactical 0.618 Entry</div>
+                            <div class="card-sub">戰術 0.618 集結點</div>
                         </div>
                         <div class="trade-card glow-tp">
-                            <div class="card-title">Objective Alpha</div>
+                            <div class="card-title">目標阿爾法</div>
                             <div class="card-value text-tp">${setup['tp2']:,.2f}</div>
-                            <div class="card-sub">Stimpack Limit (1.618)</div>
+                            <div class="card-sub">延伸目標 (1.618)</div>
                         </div>
                         <div class="trade-card glow-sl">
-                            <div class="card-title">Abort Threshold</div>
+                            <div class="card-title">撤離閾值</div>
                             <div class="card-value text-sl">${setup['sl']:,.2f}</div>
-                            <div class="card-sub">Structure Defense (-1.5 ATR)</div>
+                            <div class="card-sub">結構防禦 (-1.5 ATR)</div>
                         </div>
                         <div class="trade-card glow-rr">
-                            <div class="card-title">Intel Ratio (R:R)</div>
+                            <div class="card-title">情報比率 (R:R)</div>
                             <div class="card-value">{setup['rr']:.2f}</div>
-                            <div class="card-sub">Efficiency > 2.0</div>
+                            <div class="card-sub">效率建議 > 2.0</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.info("⚠️ Protocol Idle: Conditions not met for efficient deployment.")
+                    # 信息已翻譯
+                    st.info("⚠️ 協議閒置：尚未滿足高效部署條件。")
                     
                 col_chart, col_desc = st.columns([2.2, 0.8])
                 
@@ -517,37 +524,40 @@ def main():
                     st.plotly_chart(fig, use_container_width=True)
                     
                 with col_desc:
-                    st.markdown("### 🤖 Adjutant Tactical Readout")
+                    # 副標題已翻譯
+                    st.markdown("### 🤖 副官戰術報告") 
                     
                     tag_class = "bullish-tag" if analysis['sentiment'] == "bullish" else "bearish-tag" if analysis['sentiment'] == "bearish" else "neutral-tag"
-                    st.markdown(f"**Threat Level:** <span class='{tag_class}'>{analysis['action']}</span>", unsafe_allow_html=True)
+                    st.markdown(f"**威脅等級:** <span class='{tag_class}'>{analysis['action']}</span>", unsafe_allow_html=True)
                     
                     st.markdown("""<div class="adjutant-log">""", unsafe_allow_html=True)
-                    st.markdown(f"> **Trend Vector**: {fib_data['trend']}")
-                    st.markdown(f"> **Apex Point**: {fib_data['high']:.2f}")
-                    st.markdown(f"> **Nadir Point**: {fib_data['low']:.2f}")
-                    st.markdown(f"> **0.618 Tac Entry**: {fib_data['levels']['0.618']:.2f}")
+                    st.markdown(f"> **趨勢向量**: {fib_data['trend']}")
+                    st.markdown(f"> **頂點價格 (Apex)**: {fib_data['high']:.2f}")
+                    st.markdown(f"> **底點價格 (Nadir)**: {fib_data['low']:.2f}")
+                    st.markdown(f"> **0.618 戰術部署**: {fib_data['levels']['0.618']:.2f}")
                     
                     st.markdown("---")
-                    st.markdown("**> Signal Confirmation:**")
+                    st.markdown("**> 信號確認:**")
                     for r in analysis['reasons']:
                         st.markdown(f"✅ {r}")
                     
                     if analysis['in_zone']:
-                        st.markdown("**>>> ALERT: Target in PZR Zone <<<**")
+                        st.markdown("**>>> 警報：目標進入潛在反轉區 (PZR) <<<**") # 已翻譯
                     else:
-                        st.markdown(">>> STATUS: Awaiting Trajectory <<<")
+                        st.markdown(">>> 狀態：等待軌跡確認 <<<") # 已翻譯
                     st.markdown("</div>", unsafe_allow_html=True)
 
             else:
-                st.error("Telemetry Error: Insufficient data points. Requires more historical data.")
+                # 錯誤信息已翻譯
+                st.error("遙測錯誤：數據點不足。請檢查代碼或選擇更長的時序框架。")
     else:
-        st.info("👋 Awaiting Orders. Click **『☢️ Initiate Scanner Sweep』** to begin.")
+        # 歡迎信息已翻譯
+        st.info("👋 等待指令。請點擊 **『☢️ 啟動掃描程序』** 開始。")
         st.markdown("""
-        #### System Upgrade (V4.3 - Optimized):
-        - 🛰️ **O.C.T.S. Online**: 軌道司令部戰術介面已上線。
-        - 🎯 **Tactical Coords**: 部署座標 (Entry) 現已鎖定 0.618 最佳集結點。
-        - 🛡️ **Structural SL**: 撤離閾值 (SL) 強化為結構低點 + ATR 緩衝，更加堅固。
+        #### 系統升級報告 (V4.3 - 優化版)：
+        - 🛰️ **O.C.T.S. 上線**: 軌道司令部戰術介面已上線。
+        - 🎯 **戰術座標**: 部署座標 (Entry) 現已鎖定 0.618 最佳集結點。
+        - 🛡️ **結構化止損**: 撤離閾值 (SL) 強化為結構端點 + ATR 緩衝，更加堅固。
         """)
 
 if __name__ == "__main__":
