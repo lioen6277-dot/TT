@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 AI 趨勢分析 Streamlit 應用程式
-專家增強最終版實作 (V12.3 - 專業策略整合與鮭魚粉UI)
+專家增強最終版實作 (V12.4 - 專業策略整合、鮭魚粉UI與光暈效果)
 
 本應用程式根據一份詳細的金融分析工具設定文件進行開發，並融合了專業級的
 app3.0.py 設計邏輯與使用者提供的專業操盤策略，旨在提供一個外觀精美、
@@ -9,9 +9,9 @@ app3.0.py 設計邏輯與使用者提供的專業操盤策略，旨在提供一�
 
 核心功能：
 - [策略整合] 實現專業操盤框架 (RSI/MACD趨勢定性, 斐波那契結構, ATR風控)。
-- [R:R 優化] 止損點錨定斐波那契0.786並增加ATR緩衝，確保結構性止損。
-- [UI/配色] 全局應用鮭魚粉 (#FA8072) 配色主題。
-- [結果顯示] 核心交易建議使用 Metric 指標卡片顯示。
+- [R:R 優化] 止損點錨定斐波那契0.786並增加ATR緩衝。
+- [UI/配色] 全局應用鮭魚粉 (#FA8072) 主題色。
+- [視覺特效] 核心交易指標卡片底部增加**光暈 (Glow Effect)**。
 """
 
 # 載入核心套件
@@ -88,12 +88,11 @@ def getDataFromYF(symbol, period_tuple):
             return None
         return data.reset_index()
     except Exception as e:
-        st.error(f"⚠️ 無法從 Yahoo Finance 獲取數據：{e}")
+        # st.error(f"⚠️ 無法從 Yahoo Finance 獲取數據：{e}")
         return None
 
 def get_latest_fa_rating(symbol):
     """模擬的基本面評分 (0.0 到 5.0)"""
-    # 僅為模擬，實際應用中需連接外部數據源
     np.random.seed(hash(symbol) % 100) # 確保同一標的評分穩定
     return round(np.random.uniform(2.5, 5.0), 1)
 
@@ -127,10 +126,8 @@ def calculate_technical_indicators(df):
     
     # 🚀 斐波那契結構計算 (簡化版本 - 計算最近一個主要波段)
     window_size = min(50, len(df))
-    # 識別最近50根K線的最大/最小價
     max_price = df['High'].iloc[-window_size:].max()
     min_price = df['Low'].iloc[-window_size:].min()
-    
     price_range = max_price - min_price
 
     # 多頭回撤區 (用於找買點)
@@ -150,7 +147,7 @@ def calculate_technical_indicators(df):
     return df.dropna()
 
 # ==============================================================================
-# 3. 專業策略信號融合與 R:R 風控計算
+# 3. 專業策略信號融合與 R:R 風控計算 (邏輯與前版一致，確保穩定)
 # ==============================================================================
 
 def generate_expert_fusion_signal(df, fa_rating, currency_symbol="$"):
@@ -249,7 +246,7 @@ def generate_expert_fusion_signal(df, fa_rating, currency_symbol="$"):
 
     if action in ["買進 (Buy)", "中性偏買 (Hold/Buy)"]:
         # SL: 斐波那契 0.786 結構位 - 0.5 ATR 緩衝 (專業結構性止損)
-        stop_loss_base = last_row['Fib_0.786'] if last_row['Fib_0.786'] < entry else entry - (atr_value * 2.0) # 確保SL在下方
+        stop_loss_base = last_row['Fib_0.786'] if last_row['Fib_0.786'] < entry else entry - (atr_value * 2.0) 
         stop_loss = stop_loss_base - (atr_value * 0.5) 
         
         # TP: 斐波那契 1.618 擴展 (主要目標)
@@ -264,7 +261,7 @@ def generate_expert_fusion_signal(df, fa_rating, currency_symbol="$"):
     
     elif action in ["賣出 (Sell/Short)", "中性偏賣 (Hold/Sell)"]:
         # SL: 斐波那契 0.786 Short 結構位 + 0.5 ATR 緩衝
-        stop_loss_base = last_row['Fib_0.786_Short'] if last_row['Fib_0.786_Short'] > entry else entry + (atr_value * 2.0) # 確保SL在上方
+        stop_loss_base = last_row['Fib_0.786_Short'] if last_row['Fib_0.786_Short'] > entry else entry + (atr_value * 2.0) 
         stop_loss = stop_loss_base + (atr_value * 0.5)
         
         # TP: 斐波那契 1.618 Short 擴展
@@ -307,7 +304,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ⭐️ 鮭魚粉配色 CSS 
+# ⭐️ 鮭魚粉配色與光暈 CSS 
 custom_css = """
 <style>
 /* Streamlit 核心 UI 顏色修改 (按鈕/Slider等) */
@@ -321,23 +318,41 @@ custom_css = """
     border-color: #FF9999;
 }
 
-/* 專業行動建議的顏色標記 */
-.buy-action {
-    color: #FA8072; /* Salmon Pink for Buy */
-    font-weight: bold;
-}
-.sell-action {
-    color: #4682B4; /* SteelBlue for Sell */
-    font-weight: bold;
-}
-.neutral-action {
-    color: #808080; /* Gray for Neutral */
-    font-weight: bold;
-}
-
 /* Metric 指標卡片字體大小調整 */
 [data-testid="stMetricValue"] {
     font-size: 1.5em !important;
+    font-weight: 700 !important;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 1.0em !important;
+    color: #4A4A4A;
+}
+
+/* --- 核心指標光暈效果 (Glow Effect) --- */
+
+/* 入場價 - 鮭魚粉光暈 */
+.glow-entry > div > div { /* Targeting the inner metric container */
+    box-shadow: 0 0 15px 0 rgba(250, 128, 114, 0.4); /* Subtle overall glow */
+    border-radius: 8px;
+    border-bottom: 4px solid #FA8072 !important; /* 強調底部顏色 */
+}
+/* 止損價 - 結構綠光暈 (用戶要求綠色SL) */
+.glow-sl > div > div {
+    box-shadow: 0 0 15px 0 rgba(40, 167, 69, 0.4); /* Green Glow */
+    border-radius: 8px;
+    border-bottom: 4px solid #28a745 !important;
+}
+/* 止盈價 - 目標紅光暈 (用戶要求紅色TP) */
+.glow-tp > div > div {
+    box-shadow: 0 0 15px 0 rgba(220, 53, 69, 0.4); /* Red Glow */
+    border-radius: 8px;
+    border-bottom: 4px solid #dc3545 !important;
+}
+
+/* 風險報酬比 (R:R) 卡片強化 */
+.glow-rr > div > div {
+    border-left: 4px solid #4682B4 !important; /* 海軍藍側邊條 */
+    border-radius: 8px;
 }
 
 /* 隱藏 Streamlit 腳部/菜單 */
@@ -349,59 +364,67 @@ st.markdown(custom_css, unsafe_allow_html=True)
 
 def display_analysis_results(symbol, period_name, currency_symbol, result, df_plot):
     st.subheader(f"🚀 {symbol} ({period_name}) 專業操盤策略分析")
+    st.markdown("---")
     
     action_base = result['action'].split('(')[0]
     action_hint = result['action'].split('(')[1].replace(')', '')
-    action_color = "inverse" if "Buy" in result['action'] else ("off" if "Sell" in result['action'] else "gray")
     
     # 策略總結區塊 (Metric 卡片顯示)
     col1, col2, col3, col4, col5 = st.columns(5)
     
-    # 1. 行動建議卡片
+    # 1. 行動建議卡片 (使用 container 增加視覺衝擊)
     with col1:
+        color = '#FA8072' if 'Buy' in result['action'] else ('#4682B4' if 'Sell' in result['action'] else '#808080')
         st.markdown(f"**🎯 最終行動建議**", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size: 1.8em; font-weight: bold; color: {'#FA8072' if 'Buy' in result['action'] else '#4682B4'};'>{action_base}</p>", unsafe_allow_html=True)
+        st.markdown(f"<div style='border: 2px solid {color}; border-radius: 8px; padding: 10px; background-color: rgba(255, 255, 255, 0.9); text-align: center;'> <p style='font-size: 2.0em; font-weight: 900; color: {color}; margin: 0;'>{action_base}</p><p style='font-size: 0.9em; color: {color}; margin: 0; opacity: 0.8;'>({action_hint})</p></div>", unsafe_allow_html=True)
         st.metric(
             label=f"信心指數", 
             value=f"{result['confidence']:.0f}%",
-            delta=action_hint
+            delta=f"融合分數: {result['score']:.2f}"
         )
 
-    # 2. 進場價卡片
+    # 2. 進場價卡片 (鮭魚粉光暈)
     with col2:
+        st.markdown('<div class="glow-entry">', unsafe_allow_html=True)
         st.metric(
             label="💰 建議進場價 (Entry)", 
             value=f"{currency_symbol}{result['entry_price']:.4f}",
             delta=f"當前價格: {currency_symbol}{result['current_price']:.4f}"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. 止損價 (SL) 卡片
+    # 3. 止損價 (SL) 卡片 (綠色光暈)
     with col3:
+        st.markdown('<div class="glow-sl">', unsafe_allow_html=True)
         st.metric(
             label="⛔ 止損價 (SL) - 風控為王", 
             value=f"{currency_symbol}{result['stop_loss']:.4f}",
             delta=f"基於 Fib 0.786 結構性止損"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. 止盈價 (TP) 卡片
+    # 4. 止盈價 (TP) 卡片 (紅色光暈)
     with col4:
+        st.markdown('<div class="glow-tp">', unsafe_allow_html=True)
         st.metric(
             label="📈 止盈價 (TP) - 結構目標", 
             value=f"{currency_symbol}{result['take_profit']:.4f}",
             delta=f"基於 Fib 1.618 擴展"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    # 5. R:R 卡片
+    # 5. R:R 卡片 (特殊側邊條強化)
     with col5:
-        # 使用顏色提示 R:R 是否符合專業標準 (>= 2.0)
-        rr_color = "#28a745" if result['actual_rr'] >= 2.0 else "#FA8072"
+        rr_color = "#28a745" if result['actual_rr'] >= 2.0 else "#dc3545"
+        st.markdown('<div class="glow-rr">', unsafe_allow_html=True)
         st.markdown(f"**⚖️ 風險報酬比 (R:R)**", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size: 1.8em; font-weight: bold; color: {rr_color};'>1:{result['actual_rr']:.2f}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 1.8em; font-weight: bold; color: {rr_color}; margin-top: -10px;'>1:{result['actual_rr']:.2f}</p>", unsafe_allow_html=True)
         st.metric(
             label=f"單筆風險 (ATR)", 
             value=f"{result['atr']:.4f}",
-            delta=f"融合分數: {result['score']:.2f}"
+            delta=f"基本面評分: {get_latest_fa_rating(symbol):.1f}/5.0"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
         
 
     st.markdown("---")
@@ -433,7 +456,7 @@ def display_analysis_results(symbol, period_name, currency_symbol, result, df_pl
         rows=4, cols=1, 
         shared_xaxes=True, 
         vertical_spacing=0.1,
-        row_heights=[0.5, 0.15, 0.15, 0.2] # 調整圖表高度比例
+        row_heights=[0.5, 0.15, 0.15, 0.2] 
     )
 
     # 1. 蠟燭圖
@@ -467,8 +490,8 @@ def display_analysis_results(symbol, period_name, currency_symbol, result, df_pl
     )
     
     # 標記 TP/SL
-    fig.add_hline(y=result['take_profit'], line_width=2, line_dash="dot", line_color="#28a745", row=1, col=1, annotation_text="TP (1.618)")
-    fig.add_hline(y=result['stop_loss'], line_width=2, line_dash="dot", line_color="#dc3545", row=1, col=1, annotation_text="SL (Fib 0.786+ATR)")
+    fig.add_hline(y=result['take_profit'], line_width=2, line_dash="dot", line_color="#dc3545", row=1, col=1, annotation_text="TP (1.618)") # 紅色 TP
+    fig.add_hline(y=result['stop_loss'], line_width=2, line_dash="dot", line_color="#28a745", row=1, col=1, annotation_text="SL (Fib 0.786+ATR)") # 綠色 SL
 
     # 2. MACD 圖
     fig.add_trace(go.Bar(x=df_plot['Date'], y=df_plot['MACD_Hist'], name='MACD 柱狀體', marker_color=np.where(df_plot['MACD_Hist'] > 0, '#FA8072', '#4682B4')), row=2, col=1)
