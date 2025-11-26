@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import json # 新增：用於格式化結構化輸出
 
 # --- 數據準備與輔助函數 ---
 
@@ -187,72 +188,96 @@ def calculate_r_multiple_strategy(df, atr_period=14, entry_index=-1, entry_type=
         "風險回報比 (R:R)": f'1:{reward_r_multiple}'
     }
 
-# --- 運行示範 ---
+# --- 運行示範：將輸出轉換為結構化字典 ---
 
 if __name__ == '__main__':
-    print("--- 股票交易分析工具包示範 ---")
+    # 總結果容器
+    final_results = {
+        "AnalysisTitle": "股票交易指標卡片分析結果",
+        "DataSnippet": [],
+        "KLineAnalysis": [],
+        "VSAAnalysis": [],
+        "StrategyRecommendations": {
+            "LongEntry": {},
+            "ShortEntry": {}
+        }
+    }
 
     # 1. 生成和預處理數據
     df = generate_mock_ohlcv(periods=50)
     df = calculate_atr(df, period=14)
     
-    print("\n[原始數據 (部分)]")
-    print(df[['Close', 'Volume', 'ATR']].tail(5).to_markdown(numalign="left", stralign="left"))
+    # 獲取原始數據片段 (作為指標卡片的一部分)
+    data_snippet = df[['Close', 'Volume', 'ATR']].tail(5).reset_index()
+    data_snippet.rename(columns={'index': 'Date'}, inplace=True)
+    final_results["DataSnippet"] = [
+        {"Date": row['Date'].strftime('%Y-%m-%d'), 
+         "Close": row['Close'], 
+         "Volume": row['Volume'], 
+         "ATR": round(row['ATR'], 4)} 
+        for index, row in data_snippet.iterrows()
+    ]
+
 
     # 2. 應用 K 線形態分析
     df = analyze_price_action(df)
     
-    print("\n[K線形態分析結果 (K_Action)]")
-    # 查找所有檢測到的形態
-    action_results = df[df['K_Action'] != ''][['Close', 'K_Action']].tail(5)
-    if not action_results.empty:
-        print(action_results.to_markdown(numalign="left", stralign="left"))
-    else:
-        print("未檢測到常見的 K 線形態 (多頭/空頭吞噬)。")
+    # 提取 K 線形態結果
+    action_results = df[df['K_Action'] != ''][['Close', 'K_Action']].tail(5).reset_index()
+    final_results["KLineAnalysis"] = [
+        {"Date": row['index'].strftime('%Y-%m-%d'), 
+         "Close": row['Close'], 
+         "Pattern": row['K_Action']} 
+        for index, row in action_results.iterrows()
+    ]
+    
+    if not final_results["KLineAnalysis"]:
+        final_results["KLineAnalysis"].append({"Message": "未檢測到常見的 K 線形態 (多頭/空頭吞噬)。"})
+
 
     # 3. 應用 VSA 價量分析
     df = analyze_volume_price(df)
     
-    print("\n[VSA 價量分析結果 (VSA_Action)]")
-    # 查找所有檢測到的 VSA 行為
-    vsa_results = df[df['VSA_Action'] != ''][['Close', 'Volume', 'VSA_Action']].tail(5)
-    if not vsa_results.empty:
-        print(vsa_results.to_markdown(numalign="left", stralign="left"))
-    else:
-        print("未檢測到明顯的 VSA 行為。")
-
-    # 4. 運行升級後的 R 倍數策略
+    # 提取 VSA 價量結果
+    vsa_results = df[df['VSA_Action'] != ''][['Close', 'Volume', 'VSA_Action']].tail(5).reset_index()
+    final_results["VSAAnalysis"] = [
+        {"Date": row['index'].strftime('%Y-%m-%d'), 
+         "Close": row['Close'], 
+         "Volume": row['Volume'],
+         "VSA_Signal": row['VSA_Action']} 
+        for index, row in vsa_results.iterrows()
+    ]
     
-    # 假設我們在最後一個交易日以收盤價進行 'Long' 交易
-    entry_date = df.index[-1].strftime('%Y-%m-%d')
-    strategy_params = calculate_r_multiple_strategy(
+    if not final_results["VSAAnalysis"]:
+        final_results["VSAAnalysis"].append({"Message": "未檢測到明顯的 VSA 行為。"})
+
+
+    # 4. 運行升級後的 R 倍數策略 (Long)
+    strategy_params_long = calculate_r_multiple_strategy(
         df, 
         entry_index=-1, 
         entry_type='Long', 
-        risk_atr_multiplier=1.5, # 止損設為 1.5 倍 ATR 距離
-        reward_r_multiple=4.0      # 目標設為 4R 
+        risk_atr_multiplier=1.5, 
+        reward_r_multiple=4.0      
     )
-
-    print(f"\n--- R 倍數策略計算結果 ({entry_date} - 多頭) ---")
-    for key, value in strategy_params.items():
-        print(f"{key}: {value}")
-        
-    print("\n[風險管理總結]")
-    if strategy_params['Status'] == '成功':
-        R_value = strategy_params['R單位實際值']
-        print(f"止損距離: {R_value} (1.5 x ATR)")
-        print(f"目標距離: {R_value * 4.0} (4.0 x R)")
-        print("建議使用 1.5 ATR 作為止損，並將目標設為 4 倍風險單位。")
+    final_results["StrategyRecommendations"]["LongEntry"] = {
+        "EntryDate": df.index[-1].strftime('%Y-%m-%d'),
+        "Details": strategy_params_long
+    }
     
-    # 假設我們在前一個交易日以收盤價進行 'Short' 交易
+
+    # 5. 運行升級後的 R 倍數策略 (Short)
     strategy_params_short = calculate_r_multiple_strategy(
         df, 
-        entry_index=-2, # 使用倒數第二天的數據
+        entry_index=-2, 
         entry_type='Short', 
-        risk_atr_multiplier=2.0, # 止損設為 2.0 倍 ATR 距離
-        reward_r_multiple=2.5      # 目標設為 2.5R 
+        risk_atr_multiplier=2.0, 
+        reward_r_multiple=2.5      
     )
+    final_results["StrategyRecommendations"]["ShortEntry"] = {
+        "EntryDate": df.index[-2].strftime('%Y-%m-%d'),
+        "Details": strategy_params_short
+    }
     
-    print(f"\n--- R 倍數策略計算結果 ({df.index[-2].strftime('%Y-%m-%d')} - 空頭) ---")
-    for key, value in strategy_params_short.items():
-        print(f"{key}: {value}")
+    # 輸出最終的結構化指標卡片 (JSON格式)
+    print(json.dumps(final_results, indent=4, ensure_ascii=False))
